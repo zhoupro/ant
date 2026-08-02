@@ -1,0 +1,59 @@
+# ===== Go 后端 =====
+# 编译产物
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go 测试 / coverage
+*.test
+*.out
+coverage.*
+*.cover
+
+# Delve 调试
+__debug_bin*
+
+# ===== 前端 (web/) =====
+# Vite / Node
+web/node_modules/
+web/dist/
+web/.vite/
+web/.cache/
+web/*.local
+
+# 依赖与锁文件外的内容
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+web/pnpm-debug.log*
+web/.env
+web/.env.local
+web/.env.*.local
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ===== 运行时数据 =====
+# SQLite 数据库（含用户数据，勿入库）
+data/
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*.pid
+
+# 应用日志
+logs/
+*.log
+static
