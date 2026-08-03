@@ -7,6 +7,7 @@ import (
 
 	"mc/models"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -27,8 +28,33 @@ func Init(dbPath string) {
 		log.Fatalf("failed to open db: %v", err)
 	}
 
-	if err := DB.AutoMigrate(&models.Note{}); err != nil {
+	if err := DB.AutoMigrate(&models.Note{}, &models.User{}, &models.Session{}); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
+
+	seedDefaultUser()
 	log.Printf("db ready at %s", dbPath)
+}
+
+func seedDefaultUser() {
+	var count int64
+	if err := DB.Model(&models.User{}).Count(&count).Error; err != nil {
+		log.Fatalf("failed to count users: %v", err)
+	}
+	if count > 0 {
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte("test123"), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatalf("failed to hash default password: %v", err)
+	}
+	user := models.User{
+		Username:           "test",
+		PasswordHash:       string(hash),
+		MustChangePassword: true,
+	}
+	if err := DB.Create(&user).Error; err != nil {
+		log.Fatalf("failed to seed default user: %v", err)
+	}
+	log.Printf("seeded default user 'test' (must change password on first login)")
 }

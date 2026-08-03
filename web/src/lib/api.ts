@@ -1,12 +1,19 @@
 import type { Note, NoteInput } from "@/features/notes/types";
+import type {
+  ChangePasswordInput,
+  LoginInput,
+  User,
+} from "@/features/auth/types";
 
 const API_BASE = "/api/notes";
+const AUTH_BASE = "/api/auth";
 
 type ApiEnvelope<T> = { data?: T; error?: string };
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await fetch(input, {
     headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     ...init,
   });
   let body: ApiEnvelope<T> | null = null;
@@ -45,6 +52,28 @@ export function updateNote(id: number, input: NoteInput): Promise<Note> {
 
 export function deleteNote(id: number): Promise<null> {
   return request<null>(`${API_BASE}/${id}`, { method: "DELETE" });
+}
+
+export function login(input: LoginInput): Promise<User> {
+  return request<User>(`${AUTH_BASE}/login`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function logout(): Promise<null> {
+  return request<null>(`${AUTH_BASE}/logout`, { method: "POST" });
+}
+
+export function me(): Promise<User> {
+  return request<User>(`${AUTH_BASE}/me`);
+}
+
+export function changePassword(input: ChangePasswordInput): Promise<User> {
+  return request<User>(`${AUTH_BASE}/change-password`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function formatDateTime(value: string): string {

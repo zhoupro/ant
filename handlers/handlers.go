@@ -12,11 +12,20 @@ import (
 func Register(r *gin.Engine) {
 	api := r.Group("/api")
 	{
-		api.GET("/notes", listNotes)
-		api.GET("/notes/:id", getNote)
-		api.POST("/notes", createNote)
-		api.PUT("/notes/:id", updateNote)
-		api.DELETE("/notes/:id", deleteNote)
+		api.POST("/auth/login", login)
+		api.POST("/auth/logout", logout)
+		api.GET("/auth/me", authRequired, me)
+		api.POST("/auth/change-password", authRequired, changePassword)
+
+		notes := api.Group("/notes")
+		notes.Use(authRequired)
+		{
+			notes.GET("", listNotes)
+			notes.GET("/:id", getNote)
+			notes.POST("", createNote)
+			notes.PUT("/:id", updateNote)
+			notes.DELETE("/:id", deleteNote)
+		}
 	}
 }
 
