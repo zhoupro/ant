@@ -17,10 +17,19 @@ func main() {
 	host := flag.String("host", envOr("HOST", "0.0.0.0"), "listen host")
 	dbPath := flag.String("db", envOr("DB_PATH", "data/app.db"), "sqlite db path")
 	staticDir := flag.String("static", envOr("STATIC_DIR", "static"), "static dir")
+	resetPassword := flag.String("reset-default-user", "", "reset default user 'test' to this password (also forces change on next login), then exit")
 	flag.Parse()
 
 	abs, _ := filepath.Abs(*dbPath)
 	db.Init(abs)
+
+	if *resetPassword != "" {
+		if err := db.ResetDefaultUser(*resetPassword); err != nil {
+			log.Fatalf("reset failed: %v", err)
+		}
+		log.Printf("default user 'test' password has been reset; login will require password change")
+		return
+	}
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()

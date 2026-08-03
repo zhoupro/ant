@@ -1,11 +1,9 @@
-import type { Note, NoteInput } from "@/features/notes/types";
 import type {
   ChangePasswordInput,
   LoginInput,
   User,
 } from "@/features/auth/types";
 
-const API_BASE = "/api/notes";
 const AUTH_BASE = "/api/auth";
 
 type ApiEnvelope<T> = { data?: T; error?: string };
@@ -26,32 +24,6 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
     throw new Error(body?.error || `Request failed: ${res.status}`);
   }
   return (body?.data as T) ?? (null as unknown as T);
-}
-
-export function listNotes(): Promise<Note[]> {
-  return request<Note[]>(API_BASE);
-}
-
-export function getNote(id: number): Promise<Note> {
-  return request<Note>(`${API_BASE}/${id}`);
-}
-
-export function createNote(input: NoteInput): Promise<Note> {
-  return request<Note>(API_BASE, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function updateNote(id: number, input: NoteInput): Promise<Note> {
-  return request<Note>(`${API_BASE}/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(input),
-  });
-}
-
-export function deleteNote(id: number): Promise<null> {
-  return request<null>(`${API_BASE}/${id}`, { method: "DELETE" });
 }
 
 export function login(input: LoginInput): Promise<User> {
