@@ -3,8 +3,18 @@ import type {
   LoginInput,
   User,
 } from "@/features/auth/types";
+import type {
+  AddColumnInput,
+  Column,
+  CreateTableInput,
+  DBStatus,
+  RowInput,
+  RowsResponse,
+} from "@/features/db/types";
 
 const AUTH_BASE = "/api/auth";
+const DB_BASE = "/api/dbfile";
+const TABLES_BASE = "/api/tables";
 
 type ApiEnvelope<T> = { data?: T; error?: string };
 
@@ -106,6 +116,111 @@ export function updateSetting(key: string, value: string): Promise<Setting> {
   });
 }
 
+export function getDBStatus(): Promise<DBStatus> {
+  return request<DBStatus>(`${DB_BASE}/status`);
+}
+
+export async function uploadDB(file: File): Promise<DBStatus> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${DB_BASE}/upload`, {
+    method: "POST",
+    body: fd,
+    credentials: "same-origin",
+  });
+  const body = (await res.json().catch(() => null)) as
+    | ApiEnvelope<DBStatus>
+    | null;
+  if (!res.ok) {
+    throw new Error(body?.error || `Request failed: ${res.status}`);
+  }
+  return (body?.data as DBStatus) ?? ({ loaded: false } as DBStatus);
+}
+
+export function loadDB(path: string): Promise<DBStatus> {
+  return request<DBStatus>(`${DB_BASE}/load`, {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
+}
+
+export function unloadDB(): Promise<{ loaded: false }> {
+  return request<{ loaded: false }>(`${DB_BASE}/unload`, { method: "POST" });
+}
+
+export function listTables(): Promise<{ tables: string[] }> {
+  return request<{ tables: string[] }>(`${TABLES_BASE}`);
+}
+
+export function getTableSchema(
+  name: string
+): Promise<{ name: string; columns: Column[]; primary_keys: string[] }> {
+  return request(`${TABLES_BASE}/${encodeURIComponent(name)}/schema`);
+}
+
+export function listRows(
+  name: string,
+  opts: { limit?: number; offset?: number; search?: string } = {}
+): Promise<RowsResponse> {
+  const params = new URLSearchParams();
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+  if (opts.search !== undefined && opts.search !== "")
+    params.set("search", opts.search);
+  const qs = params.toString();
+  return request<RowsResponse>(
+    `${TABLES_BASE}/${encodeURIComponent(name)}/rows${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function insertRow(name: string, input: RowInput): Promise<unknown> {
+  return request(`${TABLES_BASE}/${encodeURIComponent(name)}/rows`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRow(
+  name: string,
+  pk: string,
+  input: RowInput
+): Promise<unknown> {
+  return request(
+    `${TABLES_BASE}/${encodeURIComponent(name)}/rows/${encodeURIComponent(pk)}`,
+    { method: "PUT", body: JSON.stringify(input) }
+  );
+}
+
+export function deleteRow(name: string, pk: string): Promise<unknown> {
+  return request(
+    `${TABLES_BASE}/${encodeURIComponent(name)}/rows/${encodeURIComponent(pk)}`,
+    { method: "DELETE" }
+  );
+}
+
+export function createTable(input: CreateTableInput): Promise<unknown> {
+  return request(`${TABLES_BASE}`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function dropTable(name: string): Promise<unknown> {
+  return request(`${TABLES_BASE}/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+}
+
+export function addColumn(
+  name: string,
+  input: AddColumnInput
+): Promise<unknown> {
+  return request(`${TABLES_BASE}/${encodeURIComponent(name)}/columns`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function formatDateTime(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
@@ -115,17 +230,13 @@ export function formatDateTime(value: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  let value = bytes;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
-    i++;
-  }
-  const fixed = value >= 100 || i === 0 ? 0 : value >= 10 ? 1 : 2;
-  return `${value.toFixed(fixed)} ${units[i]}`;
+export function formatBytes(bytes?: number): string {
+  if (bytes === undefined || bytes === null) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 export function absoluteUrl(path: string): string {
