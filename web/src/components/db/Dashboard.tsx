@@ -1,29 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  Plus,
-  RefreshCw,
-  Table2,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  createTable,
   dropTable,
   formatBytes,
   getDBStatus,
   listTables,
-  unloadDB,
 } from "@/lib/api";
-import type { DBStatus } from "@/features/db/types";
+import type { CreateTableInput, DBStatus } from "@/features/db/types";
 
 import { CreateTableDialog } from "./CreateTableDialog";
 import { DBLoadPanel } from "./DBLoadPanel";
 import { TableView } from "./TableView";
 
-export function Dashboard() {
+interface DashboardProps {
+  onGoToSettings: () => void;
+}
+
+export function Dashboard({ onGoToSettings }: DashboardProps) {
   const [status, setStatus] = useState<DBStatus | null>(null);
   const [tables, setTables] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -68,13 +66,6 @@ export function Dashboard() {
     if (status?.loaded) void refreshTables();
   }, [status?.loaded, refreshTables]);
 
-  const handleUnload = async () => {
-    if (!confirm("卸载后不再管理该数据库,确定继续?")) return;
-    await unloadDB();
-    await refreshStatus();
-    toast.success("已卸载");
-  };
-
   const handleDropTable = async (name: string) => {
     if (!confirm(`确定删除表 "${name}" 吗?此操作不可恢复`)) return;
     try {
@@ -87,7 +78,8 @@ export function Dashboard() {
     }
   };
 
-  const handleCreated = async () => {
+  const handleCreated = async (input: CreateTableInput) => {
+    await createTable(input);
     setCreateOpen(false);
     await refreshTables();
     toast.success("表已创建");
@@ -99,29 +91,17 @@ export function Dashboard() {
         <div className="rounded-lg border bg-muted/30 p-3 text-xs">
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground">当前数据库</span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => {
-                  void refreshStatus();
-                  void refreshTables();
-                }}
-                aria-label="刷新"
-              >
-                <RefreshCw className="size-3" />
-              </Button>
-              {status?.loaded ? (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => void handleUnload()}
-                  aria-label="卸载"
-                >
-                  <X className="size-3" />
-                </Button>
-              ) : null}
-            </div>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => {
+                void refreshStatus();
+                void refreshTables();
+              }}
+              aria-label="刷新"
+            >
+              <RefreshCw className="size-3" />
+            </Button>
           </div>
           {loadingStatus ? (
             <div className="mt-2 text-muted-foreground">加载中…</div>
@@ -132,6 +112,9 @@ export function Dashboard() {
               </div>
               <div className="text-muted-foreground">
                 {formatBytes(status.size)} · {status.tables} 表
+              </div>
+              <div className="truncate text-muted-foreground/80" title={status.path}>
+                {status.path}
               </div>
             </div>
           ) : (
@@ -198,7 +181,7 @@ export function Dashboard() {
       <main className="flex-1 overflow-auto p-4">
         {!status?.loaded ? (
           <div className="flex h-full items-center justify-center">
-            <DBLoadPanel onLoaded={() => void refreshStatus()} />
+            <DBLoadPanel onGoToSettings={onGoToSettings} />
           </div>
         ) : active ? (
           <TableView

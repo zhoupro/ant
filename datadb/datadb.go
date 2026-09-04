@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	UploadsDir = "data/uploads"
-	ManagedDB  = "managed.db"
+	ManagedDB = "managed.db"
 )
 
 type Status struct {
@@ -72,8 +71,10 @@ func (m *Manager) Load(path string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(abs); err != nil {
-		return fmt.Errorf("文件不存在: %w", err)
+	if dir := filepath.Dir(abs); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("创建目录失败: %w", err)
+		}
 	}
 	gdb, err := openSQLite(abs)
 	if err != nil {
@@ -81,34 +82,6 @@ func (m *Manager) Load(path string) error {
 	}
 	m.swap(gdb, abs)
 	return nil
-}
-
-func (m *Manager) LoadFromUpload(filename string, data []byte) (string, error) {
-	if err := os.MkdirAll(UploadsDir, 0755); err != nil {
-		return "", fmt.Errorf("创建上传目录失败: %w", err)
-	}
-	if filename == "" {
-		filename = "uploaded.db"
-	}
-	ext := filepath.Ext(filename)
-	if ext == "" {
-		ext = ".db"
-		filename += ext
-	}
-	base := filepath.Base(filename)
-	stem := base[:len(base)-len(ext)]
-	dest := filepath.Join(UploadsDir, base)
-	if _, err := os.Stat(dest); err == nil {
-		dest = filepath.Join(UploadsDir, fmt.Sprintf("%s_%d%s", stem, os.Getpid(), ext))
-	}
-	if err := os.WriteFile(dest, data, 0644); err != nil {
-		return "", fmt.Errorf("写入文件失败: %w", err)
-	}
-	if err := m.Load(dest); err != nil {
-		_ = os.Remove(dest)
-		return "", err
-	}
-	return dest, nil
 }
 
 func (m *Manager) Unload() error {

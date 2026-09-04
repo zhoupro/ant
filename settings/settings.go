@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	KeyUploadRoot = "upload_root"
+	KeyUploadRoot     = "upload_root"
+	KeyManagedDBPath  = "managed_db_path"
 )
 
 type Store struct {

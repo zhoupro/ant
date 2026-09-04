@@ -103,7 +103,7 @@ export default function App() {
         ) : tab === "settings" ? (
           <Settings />
         ) : (
-          <Dashboard />
+          <Dashboard onGoToSettings={() => setTab("settings")} />
         )}
       </AppShell>
       <Toaster position="top-center" richColors />

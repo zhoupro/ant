@@ -120,34 +120,6 @@ export function getDBStatus(): Promise<DBStatus> {
   return request<DBStatus>(`${DB_BASE}/status`);
 }
 
-export async function uploadDB(file: File): Promise<DBStatus> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${DB_BASE}/upload`, {
-    method: "POST",
-    body: fd,
-    credentials: "same-origin",
-  });
-  const body = (await res.json().catch(() => null)) as
-    | ApiEnvelope<DBStatus>
-    | null;
-  if (!res.ok) {
-    throw new Error(body?.error || `Request failed: ${res.status}`);
-  }
-  return (body?.data as DBStatus) ?? ({ loaded: false } as DBStatus);
-}
-
-export function loadDB(path: string): Promise<DBStatus> {
-  return request<DBStatus>(`${DB_BASE}/load`, {
-    method: "POST",
-    body: JSON.stringify({ path }),
-  });
-}
-
-export function unloadDB(): Promise<{ loaded: false }> {
-  return request<{ loaded: false }>(`${DB_BASE}/unload`, { method: "POST" });
-}
-
 export function listTables(): Promise<{ tables: string[] }> {
   return request<{ tables: string[] }>(`${TABLES_BASE}`);
 }

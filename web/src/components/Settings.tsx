@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Save, Settings as SettingsIcon } from "lucide-react";
+import { Database, FolderOpen, Loader2, Save, Settings as SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,22 +19,43 @@ import {
 } from "@/lib/api";
 
 const UPLOAD_ROOT_KEY = "upload_root";
+const MANAGED_DB_KEY = "managed_db_path";
+
+interface FieldState {
+  value: string;
+  initial: string;
+  saving: boolean;
+  dirty: boolean;
+}
+
+function makeField(initial: string): FieldState {
+  return { value: initial, initial, saving: false, dirty: false };
+}
+
+function isDirty(f: FieldState): boolean {
+  return f.value.trim() !== f.initial;
+}
 
 export function Settings() {
   const [items, setItems] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploadRoot, setUploadRoot] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [uploadRoot, setUploadRoot] = useState<FieldState>(makeField(""));
+  const [managedDb, setManagedDb] = useState<FieldState>(makeField(""));
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const list = await listSettings();
       setItems(list);
-      const current = list.find((s) => s.key === UPLOAD_ROOT_KEY);
-      setUploadRoot(current?.value ?? "");
-      setDirty(false);
+      const next = (key: string) => list.find((s) => s.key === key)?.value ?? "";
+      setUploadRoot((prev) => {
+        const v = next(UPLOAD_ROOT_KEY);
+        return { ...prev, value: v, initial: v, dirty: false };
+      });
+      setManagedDb((prev) => {
+        const v = next(MANAGED_DB_KEY);
+        return { ...prev, value: v, initial: v, dirty: false };
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -46,31 +67,61 @@ export function Settings() {
     void refresh();
   }, [refresh]);
 
-  const onSave = useCallback(async () => {
-    const next = uploadRoot.trim();
-    if (!next) {
-      toast.error("路径不能为空");
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await updateSetting(UPLOAD_ROOT_KEY, next);
+  const saveField = useCallback(
+    async (key: string, value: string) => {
+      const updated = await updateSetting(key, value);
       setItems((prev) => {
-        const idx = prev.findIndex((p) => p.key === UPLOAD_ROOT_KEY);
+        const idx = prev.findIndex((p) => p.key === key);
         if (idx === -1) return [...prev, updated];
         const copy = prev.slice();
         copy[idx] = updated;
         return copy;
       });
-      setUploadRoot(updated.value);
-      setDirty(false);
+      return updated;
+    },
+    [],
+  );
+
+  const saveUploadRoot = useCallback(async () => {
+    const next = uploadRoot.value.trim();
+    if (!next) {
+      toast.error("路径不能为空");
+      return;
+    }
+    setUploadRoot((p) => ({ ...p, saving: true }));
+    try {
+      const updated = await saveField(UPLOAD_ROOT_KEY, next);
+      setUploadRoot((p) => ({ ...p, value: updated.value, initial: updated.value, dirty: false }));
       toast.success("设置已保存，后续上传将使用新目录");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存失败");
     } finally {
-      setSaving(false);
+      setUploadRoot((p) => ({ ...p, saving: false }));
     }
-  }, [uploadRoot]);
+  }, [uploadRoot.value, saveField]);
+
+  const saveManagedDb = useCallback(async () => {
+    const trimmed = managedDb.value.trim();
+    setManagedDb((p) => ({ ...p, saving: true }));
+    try {
+      const updated = await saveField(MANAGED_DB_KEY, trimmed);
+      setManagedDb((p) => ({
+        ...p,
+        value: updated.value,
+        initial: updated.value,
+        dirty: false,
+      }));
+      toast.success(
+        trimmed === ""
+          ? "已清空数据库路径，数据库已卸载"
+          : "数据库已加载",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setManagedDb((p) => ({ ...p, saving: false }));
+    }
+  }, [managedDb.value, saveField]);
 
   return (
     <Card className="w-full max-w-2xl shadow-sm">
@@ -80,39 +131,39 @@ export function Settings() {
           设置中心
         </CardTitle>
         <CardDescription>
-          配置文件上传的根目录，修改后立即对新上传生效
+          配置文件上传目录与受管数据库路径，修改后立即生效
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
             <label
               htmlFor="setting-upload-root"
-              className="text-xs text-muted-foreground"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
             >
+              <FolderOpen className="size-3.5" />
               上传根目录
             </label>
-            {dirty ? (
+            {isDirty(uploadRoot) ? (
               <span className="text-[11px] text-amber-600">未保存</span>
             ) : null}
           </div>
           <div className="flex gap-2">
             <Input
               id="setting-upload-root"
-              value={uploadRoot}
+              value={uploadRoot.value}
               placeholder={loading ? "加载中…" : "/var/data/uploads"}
-              onChange={(e) => {
-                setUploadRoot(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) =>
+                setUploadRoot((p) => ({ ...p, value: e.target.value, dirty: true }))
+              }
               disabled={loading}
               className="font-mono text-xs"
             />
             <Button
-              onClick={() => void onSave()}
-              disabled={!dirty || saving || loading}
+              onClick={() => void saveUploadRoot()}
+              disabled={!isDirty(uploadRoot) || uploadRoot.saving || loading}
             >
-              {saving ? (
+              {uploadRoot.saving ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
                 <Save className="size-3.5" />
@@ -123,6 +174,51 @@ export function Settings() {
           <p className="text-[11px] text-muted-foreground">
             支持绝对路径（如 <code className="font-mono">/data/uploads</code>）或相对路径（相对应用运行目录）。
             修改时会校验目录是否可读写；已上传的文件不会迁移。
+          </p>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <label
+              htmlFor="setting-managed-db"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <Database className="size-3.5" />
+              数据库路径
+            </label>
+            {isDirty(managedDb) ? (
+              <span className="text-[11px] text-amber-600">未保存</span>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              id="setting-managed-db"
+              value={managedDb.value}
+              placeholder={loading ? "加载中…" : "/var/data/managed.db"}
+              onChange={(e) =>
+                setManagedDb((p) => ({ ...p, value: e.target.value, dirty: true }))
+              }
+              disabled={loading}
+              className="font-mono text-xs"
+            />
+            <Button
+              onClick={() => void saveManagedDb()}
+              disabled={!isDirty(managedDb) || managedDb.saving || loading}
+            >
+              {managedDb.saving ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
+              保存
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            指向本机上的 SQLite 文件（<code className="font-mono">.db</code> / <code className="font-mono">.sqlite</code>）。
+            父目录不存在会自动创建；文件不存在会自动创建空数据库。
+            保存后立即生效（无需重启）。留空表示不管理任何数据库。
           </p>
         </div>
 

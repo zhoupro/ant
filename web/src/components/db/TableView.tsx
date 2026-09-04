@@ -122,7 +122,7 @@ export function TableView({ tableName, onMutated }: TableViewProps) {
   const onDelete = async (pk: string) => {
     if (!confirm("确定要删除该记录吗？")) return;
     await deleteRow(tableName, pk);
-    if (data && data.rows.length === 1 && offset > 0) setOffset(offset - PAGE_SIZE);
+    if (data && (data.rows?.length ?? 0) === 1 && offset > 0) setOffset(offset - PAGE_SIZE);
     else await refreshRows();
     onMutated();
   };
@@ -242,7 +242,7 @@ export function TableView({ tableName, onMutated }: TableViewProps) {
                   加载中…
                 </td>
               </tr>
-            ) : !data || data.rows.length === 0 ? (
+            ) : !data || (data.rows?.length ?? 0) === 0 ? (
               <tr>
                 <td
                   colSpan={cols.length + 1}

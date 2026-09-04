@@ -8,19 +8,22 @@ import (
 )
 
 type Deps struct {
-	Store *settings.Store
+	Store   *settings.Store
+	Manager *datadb.Manager
 }
 
 func Register(r *gin.Engine, deps Deps) {
 	uploadDeps := &UploadDeps{Store: deps.Store}
 	settingsDeps := &SettingsDeps{
-		Store: deps.Store,
+		Store:   deps.Store,
+		Manager: deps.Manager,
 		EditableKeys: map[string]struct{}{
-			settings.KeyUploadRoot: {},
+			settings.KeyUploadRoot:    {},
+			settings.KeyManagedDBPath: {},
 		},
 	}
 
-	mgr := datadb.NewManager()
+	mgr := deps.Manager
 
 	api := r.Group("/api")
 	{
@@ -40,9 +43,6 @@ func Register(r *gin.Engine, deps Deps) {
 		{
 			h := NewDBFileHandler(mgr)
 			dbfile.GET("/status", h.status)
-			dbfile.POST("/upload", h.upload)
-			dbfile.POST("/load", h.load)
-			dbfile.POST("/unload", h.unload)
 		}
 
 		th := NewTablesHandler(mgr)

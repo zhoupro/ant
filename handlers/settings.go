@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"mc/datadb"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,7 @@ const settingsDepsKey = "settingsDeps"
 type SettingsDeps struct {
 	Store        *settings.Store
 	EditableKeys map[string]struct{}
+	Manager      *datadb.Manager
 }
 
 type settingsPayload struct {
@@ -54,7 +56,8 @@ func updateSettings(c *gin.Context) {
 		return
 	}
 	value := strings.TrimSpace(in.Value)
-	if in.Key == settings.KeyUploadRoot {
+	switch in.Key {
+	case settings.KeyUploadRoot:
 		if value == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "上传根目录不能为空"})
 			return
@@ -75,6 +78,35 @@ func updateSettings(c *gin.Context) {
 			_ = os.Remove(filepath.Join(abs, ".mc-upload-write-test"))
 		}
 		value = abs
+	case settings.KeyManagedDBPath:
+		if deps.Manager == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库管理器未初始化"})
+			return
+		}
+		if value == "" {
+			if err := deps.Manager.Unload(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "卸载失败: " + err.Error()})
+				return
+			}
+			value = ""
+		} else {
+			abs, err := filepath.Abs(value)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "路径不合法: " + err.Error()})
+				return
+			}
+			if dir := filepath.Dir(abs); dir != "" {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "无法创建父目录: " + err.Error()})
+					return
+				}
+			}
+			if err := deps.Manager.Load(abs); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "加载数据库失败: " + err.Error()})
+				return
+			}
+			value = abs
+		}
 	}
 	if err := deps.Store.Set(in.Key, value); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

@@ -212,6 +212,7 @@ func (h *TablesHandler) rows(c *gin.Context) {
 	args = append(args, limit, offset)
 
 	var dataRows []map[string]any
+	dataRows = make([]map[string]any, 0)
 	if err := gdb.Raw(dataQ, args...).Scan(&dataRows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
