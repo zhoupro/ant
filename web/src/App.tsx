@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Toaster } from "@/components/ui/sonner";
+import { AppShell, type HomeTab } from "@/components/AppShell";
+import { Files } from "@/components/Files";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
+import { Settings } from "@/components/Settings";
 import { Dashboard } from "@/components/db/Dashboard";
 import {
   changePassword,
@@ -17,10 +20,11 @@ type View =
   | { kind: "loading" }
   | { kind: "login" }
   | { kind: "change-password"; user: User }
-  | { kind: "dashboard"; user: User };
+  | { kind: "home"; user: User };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
+  const [tab, setTab] = useState<HomeTab>("db");
 
   const checkAuth = useCallback(async () => {
     try {
@@ -28,7 +32,7 @@ export default function App() {
       if (user.must_change_password) {
         setView({ kind: "change-password", user });
       } else {
-        setView({ kind: "dashboard", user });
+        setView({ kind: "home", user });
       }
     } catch {
       setView({ kind: "login" });
@@ -61,8 +65,8 @@ export default function App() {
             if (user.must_change_password) {
               setView({ kind: "change-password", user });
             } else {
-              setView({ kind: "dashboard", user });
-              toast.success(`欢迎回来,${user.username}`);
+              setView({ kind: "home", user });
+              toast.success(`欢迎回来，${user.username}`);
             }
           }}
         />
@@ -77,7 +81,7 @@ export default function App() {
           username={view.user.username}
           onSubmit={async (input) => {
             const user = await changePassword(input);
-            setView({ kind: "dashboard", user });
+            setView({ kind: "home", user });
             toast.success("密码已更新");
           }}
         />
@@ -88,7 +92,20 @@ export default function App() {
 
   return (
     <>
-      <Dashboard user={view.user} onLogout={handleLogout} />
+      <AppShell
+        username={view.user.username}
+        active={tab}
+        onTabChange={setTab}
+        onLogout={handleLogout}
+      >
+        {tab === "files" ? (
+          <Files />
+        ) : tab === "settings" ? (
+          <Settings />
+        ) : (
+          <Dashboard />
+        )}
+      </AppShell>
       <Toaster position="top-center" richColors />
     </>
   );

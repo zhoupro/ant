@@ -3,7 +3,7 @@ import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type HomeTab = "files" | "settings";
+export type HomeTab = "files" | "db" | "settings";
 
 interface AppShellProps {
   username: string;
@@ -15,6 +15,7 @@ interface AppShellProps {
 
 const tabs: { key: HomeTab; label: string }[] = [
   { key: "files", label: "我的文件" },
+  { key: "db", label: "数据库" },
   { key: "settings", label: "设置" },
 ];
 
