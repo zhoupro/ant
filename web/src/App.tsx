@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
-import { Welcome } from "@/components/Welcome";
+import { Dashboard } from "@/components/db/Dashboard";
 import {
   changePassword,
   login,
@@ -17,7 +17,7 @@ type View =
   | { kind: "loading" }
   | { kind: "login" }
   | { kind: "change-password"; user: User }
-  | { kind: "welcome"; user: User };
+  | { kind: "dashboard"; user: User };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -28,7 +28,7 @@ export default function App() {
       if (user.must_change_password) {
         setView({ kind: "change-password", user });
       } else {
-        setView({ kind: "welcome", user });
+        setView({ kind: "dashboard", user });
       }
     } catch {
       setView({ kind: "login" });
@@ -61,8 +61,8 @@ export default function App() {
             if (user.must_change_password) {
               setView({ kind: "change-password", user });
             } else {
-              setView({ kind: "welcome", user });
-              toast.success(`欢迎回来，${user.username}`);
+              setView({ kind: "dashboard", user });
+              toast.success(`欢迎回来,${user.username}`);
             }
           }}
         />
@@ -77,7 +77,7 @@ export default function App() {
           username={view.user.username}
           onSubmit={async (input) => {
             const user = await changePassword(input);
-            setView({ kind: "welcome", user });
+            setView({ kind: "dashboard", user });
             toast.success("密码已更新");
           }}
         />
@@ -88,7 +88,7 @@ export default function App() {
 
   return (
     <>
-      <Welcome user={view.user} onLogout={handleLogout} />
+      <Dashboard user={view.user} onLogout={handleLogout} />
       <Toaster position="top-center" richColors />
     </>
   );
