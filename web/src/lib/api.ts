@@ -48,6 +48,64 @@ export function changePassword(input: ChangePasswordInput): Promise<User> {
   });
 }
 
+export interface Attachment {
+  id: number;
+  user_id: number;
+  original_name: string;
+  size: number;
+  content_type: string;
+  url: string;
+  created_at: string;
+}
+
+export function listUploads(): Promise<Attachment[]> {
+  return request<Attachment[]>("/api/uploads");
+}
+
+export async function uploadFile(file: File): Promise<Attachment> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/uploads", {
+    method: "POST",
+    body: fd,
+    credentials: "same-origin",
+  });
+  let body: ApiEnvelope<Attachment> | null = null;
+  try {
+    body = (await res.json()) as ApiEnvelope<Attachment>;
+  } catch {
+    body = null;
+  }
+  if (!res.ok) {
+    throw new Error(body?.error || `Upload failed: ${res.status}`);
+  }
+  if (!body?.data) {
+    throw new Error("Upload response empty");
+  }
+  return body.data;
+}
+
+export function deleteUpload(id: number): Promise<null> {
+  return request<null>(`/api/uploads/${id}`, { method: "DELETE" });
+}
+
+export interface Setting {
+  key: string;
+  value: string;
+  updated_at?: string;
+}
+
+export function listSettings(): Promise<Setting[]> {
+  return request<Setting[]>("/api/settings");
+}
+
+export function updateSetting(key: string, value: string): Promise<Setting> {
+  return request<Setting>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({ key, value }),
+  });
+}
+
 export function formatDateTime(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
@@ -55,4 +113,22 @@ export function formatDateTime(value: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
     d.getHours()
   )}:${pad(d.getMinutes())}`;
+}
+
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let value = bytes;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  const fixed = value >= 100 || i === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(fixed)} ${units[i]}`;
+}
+
+export function absoluteUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${window.location.origin}${path.startsWith("/") ? "" : "/"}${path}`;
 }

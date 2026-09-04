@@ -28,12 +28,25 @@ func Init(dbPath string) {
 		log.Fatalf("failed to open db: %v", err)
 	}
 
-	if err := DB.AutoMigrate(&models.User{}, &models.Session{}); err != nil {
+	if err := DB.AutoMigrate(&models.User{}, &models.Session{}, &models.Attachment{}, &models.Setting{}); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
 
 	seedDefaultUser()
 	log.Printf("db ready at %s", dbPath)
+}
+
+func SetDefault(key, value string) {
+	var s models.Setting
+	if err := DB.First(&s, "key = ?", key).Error; err != nil {
+		if err := DB.Create(&models.Setting{Key: key, Value: value}).Error; err != nil {
+			log.Printf("failed to seed default setting %s: %v", key, err)
+		}
+		return
+	}
+	if s.Value == "" {
+		DB.Model(&s).Update("value", value)
+	}
 }
 
 func seedDefaultUser() {
