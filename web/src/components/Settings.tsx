@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Database, FolderOpen, Loader2, Save, Settings as SettingsIcon } from "lucide-react";
+import {
+  Database,
+  FolderOpen,
+  KeyRound,
+  Loader2,
+  Save,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
+  changePassword,
   listSettings,
   updateSetting,
   type Setting,
@@ -41,6 +49,10 @@ export function Settings() {
   const [loading, setLoading] = useState(true);
   const [uploadRoot, setUploadRoot] = useState<FieldState>(makeField(""));
   const [managedDb, setManagedDb] = useState<FieldState>(makeField(""));
+  const [oldPwd, setOldPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [newPwd2, setNewPwd2] = useState("");
+  const [pwdSaving, setPwdSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -220,6 +232,83 @@ export function Settings() {
             父目录不存在会自动创建；文件不存在会自动创建空数据库。
             保存后立即生效（无需重启）。留空表示不管理任何数据库。
           </p>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <div className="flex items-baseline gap-1.5">
+            <KeyRound className="size-3.5 text-muted-foreground" />
+            <h3 className="text-xs text-muted-foreground">修改密码</h3>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            数据保存在 <code className="font-mono">data/app.db</code>(系统数据库),不会因为重启或切换受管数据库而丢失,除非手动删除了该文件。
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Input
+              type="password"
+              value={oldPwd}
+              onChange={(e) => setOldPwd(e.target.value)}
+              placeholder="当前密码"
+              className="h-8 font-mono text-xs"
+              autoComplete="current-password"
+            />
+            <Input
+              type="password"
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+              placeholder="新密码(至少 6 位)"
+              className="h-8 font-mono text-xs"
+              autoComplete="new-password"
+            />
+            <Input
+              type="password"
+              value={newPwd2}
+              onChange={(e) => setNewPwd2(e.target.value)}
+              placeholder="再次输入新密码"
+              className="h-8 font-mono text-xs"
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              disabled={!oldPwd || !newPwd || pwdSaving}
+              onClick={async () => {
+                if (newPwd.length < 6) {
+                  toast.error("新密码至少 6 位");
+                  return;
+                }
+                if (newPwd !== newPwd2) {
+                  toast.error("两次输入的新密码不一致");
+                  return;
+                }
+                if (newPwd === oldPwd) {
+                  toast.error("新密码不能与当前密码相同");
+                  return;
+                }
+                setPwdSaving(true);
+                try {
+                  await changePassword({ old_password: oldPwd, new_password: newPwd });
+                  toast.success("密码已更新");
+                  setOldPwd("");
+                  setNewPwd("");
+                  setNewPwd2("");
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "修改失败");
+                } finally {
+                  setPwdSaving(false);
+                }
+              }}
+            >
+              {pwdSaving ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
+              更新密码
+            </Button>
+          </div>
         </div>
 
         <Separator />

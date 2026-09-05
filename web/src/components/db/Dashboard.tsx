@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import type { CreateTableInput, DBStatus } from "@/features/db/types";
 import { CreateTableDialog } from "./CreateTableDialog";
 import { DBLoadPanel } from "./DBLoadPanel";
 import { ModelRuntime } from "@/components/logicmodels/ModelRuntime";
+import { TableStructureDialog } from "./TableStructureDialog";
 
 interface DashboardProps {
   onGoToSettings: () => void;
@@ -31,6 +32,7 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingTables, setLoadingTables] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [structureFor, setStructureFor] = useState<string | null>(null);
   const [loadingRuntime, setLoadingRuntime] = useState(false);
 
   const refreshStatus = useCallback(async () => {
@@ -200,6 +202,15 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
                       <Button
                         variant="ghost"
                         size="icon-xs"
+                        onClick={() => setStructureFor(t)}
+                        aria-label={`编辑表结构 ${t}`}
+                        title="编辑表结构"
+                      >
+                        <Pencil className="size-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         onClick={() => void handleDropTable(t)}
                         aria-label="删除表"
                       >
@@ -251,6 +262,16 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
         onOpenChange={setCreateOpen}
         onSubmit={handleCreated}
       />
+      {structureFor ? (
+        <TableStructureDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setStructureFor(null);
+          }}
+          tableName={structureFor}
+          onChanged={() => void refreshTables()}
+        />
+      ) : null}
     </div>
   );
 }

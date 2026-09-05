@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
-	"mc/db"
-	"mc/models"
+	"mc/datadb"
+	"gorm.io/gorm"
 )
 
 var slugRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+const modelTable = "logic_models"
 
 type RelationType string
 
@@ -63,32 +66,93 @@ type RelationConfig struct {
 }
 
 type ModelConfig struct {
-	RootAlias   string           `json:"root_alias"`
-	Tables      []TableConfig    `json:"tables"`
-	Relations   []RelationConfig `json:"relations"`
+	RootAlias string           `json:"root_alias"`
+	Tables    []TableConfig    `json:"tables"`
+	Relations []RelationConfig `json:"relations"`
 }
 
-type Store struct{}
+// LogicModel is the row shape persisted inside the *managed* database
+// (the user's external data source), not in the system DB. Switching the
+// managed DB therefore switches the visible logic-model configuration.
+type LogicModel struct {
+	Slug        string    `gorm:"primaryKey;size:64"`
+	Label       string    `gorm:"size:128;not null"`
+	Description string    `gorm:"type:text"`
+	Config      string    `gorm:"type:text;not null"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
 
-func NewStore() *Store { return &Store{} }
+func (LogicModel) TableName() string { return modelTable }
 
-func (s *Store) List() ([]models.LogicModel, error) {
-	var rows []models.LogicModel
-	if err := db.DB.Order("updated_at desc").Find(&rows).Error; err != nil {
+// Store keeps a single *gorm.DB handle that is refreshed whenever the
+// managed database is reloaded. Each operation lazily re-creates the
+// `logic_models` table on the new DB so the user can simply point the
+// setting center at a different file and have a fresh model store.
+type Store struct {
+	mgr    *datadb.Manager
+	mu     sync.Mutex
+	cached *gorm.DB
+}
+
+func NewStore(mgr *datadb.Manager) *Store { return &Store{mgr: mgr} }
+
+func (s *Store) db() (*gorm.DB, error) {
+	if s.mgr == nil {
+		return nil, errors.New("逻辑模型存储未初始化")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	gdb, err := s.mgr.Current()
+	if err != nil {
+		return nil, err
+	}
+	if s.cached != gdb {
+		if err := gdb.AutoMigrate(&LogicModel{}); err != nil {
+			return nil, fmt.Errorf("初始化 logic_models 表失败: %w", err)
+		}
+		s.cached = gdb
+	}
+	return gdb, nil
+}
+
+// ResetCache drops the cached handle so the next operation re-bootstraps
+// the schema. Call after the managed DB path is updated.
+func (s *Store) ResetCache() {
+	s.mu.Lock()
+	s.cached = nil
+	s.mu.Unlock()
+}
+
+func (s *Store) List() ([]LogicModel, error) {
+	gdb, err := s.db()
+	if err != nil {
+		return nil, err
+	}
+	var rows []LogicModel
+	if err := gdb.Order("updated_at desc").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
 }
 
-func (s *Store) Get(slug string) (*models.LogicModel, error) {
-	var row models.LogicModel
-	if err := db.DB.First(&row, "slug = ?", slug).Error; err != nil {
+func (s *Store) Get(slug string) (*LogicModel, error) {
+	gdb, err := s.db()
+	if err != nil {
+		return nil, err
+	}
+	var row LogicModel
+	if err := gdb.First(&row, "slug = ?", slug).Error; err != nil {
 		return nil, err
 	}
 	return &row, nil
 }
 
-func (s *Store) Upsert(slug string, label string, description string, cfg ModelConfig) (*models.LogicModel, error) {
+func (s *Store) Upsert(slug string, label string, description string, cfg ModelConfig) (*LogicModel, error) {
+	gdb, err := s.db()
+	if err != nil {
+		return nil, err
+	}
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
@@ -103,10 +167,13 @@ func (s *Store) Upsert(slug string, label string, description string, cfg ModelC
 		return nil, fmt.Errorf("序列化配置失败: %w", err)
 	}
 	now := time.Now()
-	var row models.LogicModel
-	err = db.DB.First(&row, "slug = ?", slug).Error
+	var row LogicModel
+	err = gdb.First(&row, "slug = ?", slug).Error
 	if err != nil {
-		row = models.LogicModel{
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		row = LogicModel{
 			Slug:        slug,
 			Label:       label,
 			Description: description,
@@ -114,7 +181,7 @@ func (s *Store) Upsert(slug string, label string, description string, cfg ModelC
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
-		if err := db.DB.Create(&row).Error; err != nil {
+		if err := gdb.Create(&row).Error; err != nil {
 			return nil, err
 		}
 		return &row, nil
@@ -123,14 +190,18 @@ func (s *Store) Upsert(slug string, label string, description string, cfg ModelC
 	row.Description = description
 	row.Config = string(payload)
 	row.UpdatedAt = now
-	if err := db.DB.Save(&row).Error; err != nil {
+	if err := gdb.Save(&row).Error; err != nil {
 		return nil, err
 	}
 	return &row, nil
 }
 
 func (s *Store) Delete(slug string) error {
-	return db.DB.Where("slug = ?", slug).Delete(&models.LogicModel{}).Error
+	gdb, err := s.db()
+	if err != nil {
+		return err
+	}
+	return gdb.Where("slug = ?", slug).Delete(&LogicModel{}).Error
 }
 
 func validateSlug(slug string) error {
@@ -212,37 +283,11 @@ func validateConfig(cfg *ModelConfig) error {
 	return nil
 }
 
-func Decode(row *models.LogicModel) (ModelConfig, error) {
-	var cfg ModelConfig
-	if row == nil {
-		return cfg, errors.New("记录为空")
-	}
-	if err := json.Unmarshal([]byte(row.Config), &cfg); err != nil {
-		return cfg, fmt.Errorf("配置解析失败: %w", err)
-	}
-	return cfg, nil
-}
-
 func BusinessTypes() []string {
 	return []string{
-		"text",
-		"longtext",
-		"number",
-		"integer",
-		"boolean",
-		"date",
-		"datetime",
-		"image",
-		"images",
-		"file",
-		"json",
-		"richtext",
-		"select",
-		"multiselect",
-		"url",
-		"email",
-		"phone",
-		"color",
+		"text", "longtext", "number", "integer", "boolean", "date", "datetime",
+		"image", "images", "file", "json", "richtext", "select", "multiselect",
+		"url", "email", "phone", "color",
 	}
 }
 
@@ -295,4 +340,15 @@ func BusinessTypeLabel(t string) string {
 		return "颜色"
 	}
 	return t
+}
+
+func Decode(row *LogicModel) (ModelConfig, error) {
+	var cfg ModelConfig
+	if row == nil {
+		return cfg, errors.New("记录为空")
+	}
+	if err := json.Unmarshal([]byte(row.Config), &cfg); err != nil {
+		return cfg, fmt.Errorf("配置解析失败: %w", err)
+	}
+	return cfg, nil
 }

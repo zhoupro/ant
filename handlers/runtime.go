@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"mc/datadb"
 	"mc/logicmodels"
-	"mc/models"
 	"net/http"
 	"sort"
 	"strconv"
@@ -73,7 +72,7 @@ type runtimeSchema struct {
 	UpdatedAt     string            `json:"updated_at"`
 }
 
-func (h *RuntimeHandler) db(c *gin.Context) (*gorm.DB, *models.LogicModel, logicmodels.ModelConfig, bool) {
+func (h *RuntimeHandler) db(c *gin.Context) (*gorm.DB, *logicmodels.LogicModel, logicmodels.ModelConfig, bool) {
 	slug := c.Param("slug")
 	row, err := h.store.Get(slug)
 	if err != nil {

@@ -33,12 +33,3 @@ type Setting struct {
 	Value     string    `gorm:"type:text;not null" json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
-
-type LogicModel struct {
-	Slug        string    `gorm:"primaryKey;size:64" json:"slug"`
-	Label       string    `gorm:"size:128;not null" json:"label"`
-	Description string    `gorm:"type:text" json:"description"`
-	Config      string    `gorm:"type:text;not null" json:"config"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}

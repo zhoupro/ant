@@ -561,6 +561,47 @@ func (h *TablesHandler) addColumn(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true, "sql": stmt}})
 }
 
+func (h *TablesHandler) dropColumn(c *gin.Context) {
+	gdb, ok := h.db(c)
+	if !ok {
+		return
+	}
+	table := c.Param("name")
+	column := c.Param("column")
+	if err := validateIdent(table); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := validateIdent(column); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	pt, err := readPhysicalSchema(gdb, table)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	usedInFK := false
+	for _, fk := range pt.ForeignKeys {
+		if fk.From == column {
+			usedInFK = true
+			break
+		}
+	}
+	if usedInFK {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "字段被外键引用,无法删除"})
+		return
+	}
+	col, _ := quoteIdent(column)
+	quoted, _ := quoteIdent(table)
+	stmt := fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", quoted, col)
+	if err := gdb.Exec(stmt).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true, "sql": stmt}})
+}
+
 func normalizeType(t string) string {
 	t = strings.TrimSpace(strings.ToUpper(t))
 	switch t {

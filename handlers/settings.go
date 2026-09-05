@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"mc/datadb"
+	"mc/logicmodels"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ type SettingsDeps struct {
 	Store        *settings.Store
 	EditableKeys map[string]struct{}
 	Manager      *datadb.Manager
+	LMStore      *logicmodels.Store
 }
 
 type settingsPayload struct {
@@ -88,6 +90,9 @@ func updateSettings(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "卸载失败: " + err.Error()})
 				return
 			}
+			if deps.LMStore != nil {
+				deps.LMStore.ResetCache()
+			}
 			value = ""
 		} else {
 			abs, err := filepath.Abs(value)
@@ -104,6 +109,9 @@ func updateSettings(c *gin.Context) {
 			if err := deps.Manager.Load(abs); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "加载数据库失败: " + err.Error()})
 				return
+			}
+			if deps.LMStore != nil {
+				deps.LMStore.ResetCache()
 			}
 			value = abs
 		}

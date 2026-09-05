@@ -11,6 +11,7 @@ import (
 type Deps struct {
 	Store   *settings.Store
 	Manager *datadb.Manager
+	LMStore *logicmodels.Store
 }
 
 func Register(r *gin.Engine, deps Deps) {
@@ -18,6 +19,7 @@ func Register(r *gin.Engine, deps Deps) {
 	settingsDeps := &SettingsDeps{
 		Store:   deps.Store,
 		Manager: deps.Manager,
+		LMStore: deps.LMStore,
 		EditableKeys: map[string]struct{}{
 			settings.KeyUploadRoot:    {},
 			settings.KeyManagedDBPath: {},
@@ -25,7 +27,7 @@ func Register(r *gin.Engine, deps Deps) {
 	}
 
 	mgr := deps.Manager
-	lmStore := logicmodels.NewStore()
+	lmStore := deps.LMStore
 
 	api := r.Group("/api")
 	{
@@ -58,6 +60,7 @@ func Register(r *gin.Engine, deps Deps) {
 		api.POST("/tables", authRequired, th.create)
 		api.DELETE("/tables/:name", authRequired, th.drop)
 		api.POST("/tables/:name/columns", authRequired, th.addColumn)
+		api.DELETE("/tables/:name/columns/:column", authRequired, th.dropColumn)
 
 		lm := NewLogicModelsHandler(lmStore, mgr)
 		api.GET("/models", authRequired, lm.list)

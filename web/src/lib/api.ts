@@ -204,6 +204,13 @@ export function addColumn(
   });
 }
 
+export function dropColumn(name: string, column: string): Promise<unknown> {
+  return request(
+    `${TABLES_BASE}/${encodeURIComponent(name)}/columns/${encodeURIComponent(column)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function formatDateTime(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
