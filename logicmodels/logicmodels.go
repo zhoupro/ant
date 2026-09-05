@@ -75,12 +75,12 @@ type ModelConfig struct {
 // (the user's external data source), not in the system DB. Switching the
 // managed DB therefore switches the visible logic-model configuration.
 type LogicModel struct {
-	Slug        string    `gorm:"primaryKey;size:64"`
-	Label       string    `gorm:"size:128;not null"`
-	Description string    `gorm:"type:text"`
-	Config      string    `gorm:"type:text;not null"`
-	CreatedAt   time.Time `gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+	Slug        string    `gorm:"primaryKey;size:64" json:"slug"`
+	Label       string    `gorm:"size:128;not null" json:"label"`
+	Description string    `gorm:"type:text" json:"description"`
+	Config      string    `gorm:"type:text;not null" json:"config"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (LogicModel) TableName() string { return modelTable }
