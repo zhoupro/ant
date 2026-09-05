@@ -323,7 +323,7 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 	dataQ := fmt.Sprintf("SELECT %s FROM %s %s ORDER BY %s DESC LIMIT ? OFFSET ?",
 		strings.Join(selectCols, ", "), quoted, where, quoteCol(pk))
 	args = append(args, limit, offset)
-	var dataRows []map[string]any
+	dataRows := make([]map[string]any, 0)
 	if err := gdb.Raw(dataQ, args...).Scan(&dataRows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -368,7 +368,7 @@ func (h *RuntimeHandler) getRow(c *gin.Context) {
 	}
 	quoted, _ := quoteIdent(root.Physical)
 	q := fmt.Sprintf("SELECT * FROM %s WHERE %s = ? LIMIT 1", quoted, quoteCol(pk))
-	var rows []map[string]any
+	rows := make([]map[string]any, 0)
 	if err := gdb.Raw(q, id).Scan(&rows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -410,7 +410,7 @@ func (h *RuntimeHandler) expandRelations(gdb *gorm.DB, cfg logicmodels.ModelConf
 				}
 				qt, _ := quoteIdent(other.Physical)
 				q := fmt.Sprintf("SELECT * FROM %s WHERE %s = ?", qt, quoteCol(otherColumn))
-				var rows []map[string]any
+				rows := make([]map[string]any, 0)
 				if err := gdb.Raw(q, fkValue).Scan(&rows).Error; err != nil {
 					return nil, err
 				}
@@ -433,7 +433,7 @@ func (h *RuntimeHandler) expandRelations(gdb *gorm.DB, cfg logicmodels.ModelConf
 				}
 				qt, _ := quoteIdent(other.Physical)
 				q := fmt.Sprintf("SELECT * FROM %s WHERE %s = ?", qt, quoteCol(otherColumn))
-				var rows []map[string]any
+				rows := make([]map[string]any, 0)
 				if err := gdb.Raw(q, rootValue).Scan(&rows).Error; err != nil {
 					return nil, err
 				}
@@ -478,7 +478,7 @@ func (h *RuntimeHandler) expandRelations(gdb *gorm.DB, cfg logicmodels.ModelConf
 				"SELECT t.* FROM %s j JOIN %s t ON j.%s = t.%s WHERE j.%s = ?",
 				jq, tq, quoteCol(joinToCol), quoteCol(otherColumn), quoteCol(joinFromCol),
 			)
-			var rows []map[string]any
+			rows := make([]map[string]any, 0)
 			if err := gdb.Raw(q, rootValue).Scan(&rows).Error; err != nil {
 				return nil, err
 			}
