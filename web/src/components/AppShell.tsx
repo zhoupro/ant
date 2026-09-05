@@ -3,7 +3,7 @@ import { BookOpen, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type HomeTab = "files" | "db" | "models" | "settings";
+export type HomeTab = "home" | "files" | "db" | "models" | "pages" | "settings";
 
 interface AppShellProps {
   username: string;
@@ -14,9 +14,11 @@ interface AppShellProps {
 }
 
 const tabs: { key: HomeTab; label: string }[] = [
-  { key: "files", label: "我的文件" },
+  { key: "home", label: "首页" },
+  { key: "files", label: "文件" },
   { key: "db", label: "数据库" },
   { key: "models", label: "逻辑模型" },
+  { key: "pages", label: "页面" },
   { key: "settings", label: "设置" },
 ];
 

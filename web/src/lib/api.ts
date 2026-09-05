@@ -22,6 +22,7 @@ import type {
   RuntimeRowResponse,
   RuntimeSchema,
 } from "@/features/logicmodels/types";
+import type { Page, PageInput } from "@/features/pages/types";
 
 const AUTH_BASE = "/api/auth";
 const DB_BASE = "/api/dbfile";
@@ -354,4 +355,41 @@ export function deleteRuntimeRow(
 export function generateSlug(): string {
   const rnd = Math.random().toString(36).slice(2, 8);
   return `model_${Date.now().toString(36)}_${rnd}`;
+}
+
+const PAGES_BASE = "/api/pages";
+
+export function listPages(): Promise<Page[]> {
+  return request<Page[]>(PAGES_BASE);
+}
+
+export function getPage(id: string): Promise<Page> {
+  return request<Page>(`${PAGES_BASE}/${encodeURIComponent(id)}`);
+}
+
+export function createPage(input: PageInput): Promise<Page> {
+  return request<Page>(PAGES_BASE, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePage(id: string, input: PageInput): Promise<Page> {
+  return request<Page>(`${PAGES_BASE}/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deletePage(
+  id: string,
+): Promise<{ ok: boolean; id: string }> {
+  return request<{ ok: boolean; id: string }>(
+    `${PAGES_BASE}/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function listPageIcons(): Promise<string[]> {
+  return request<string[]>(`${PAGES_BASE}/icons`);
 }

@@ -8,6 +8,7 @@ import (
 
 	"mc/datadb"
 	"mc/logicmodels"
+	"mc/pages"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,7 @@ type SettingsDeps struct {
 	EditableKeys map[string]struct{}
 	Manager      *datadb.Manager
 	LMStore      *logicmodels.Store
+	PagesStore   *pages.Store
 }
 
 type settingsPayload struct {
@@ -93,6 +95,9 @@ func updateSettings(c *gin.Context) {
 			if deps.LMStore != nil {
 				deps.LMStore.ResetCache()
 			}
+			if deps.PagesStore != nil {
+				deps.PagesStore.ResetCache()
+			}
 			value = ""
 		} else {
 			abs, err := filepath.Abs(value)
@@ -112,6 +117,9 @@ func updateSettings(c *gin.Context) {
 			}
 			if deps.LMStore != nil {
 				deps.LMStore.ResetCache()
+			}
+			if deps.PagesStore != nil {
+				deps.PagesStore.ResetCache()
 			}
 			value = abs
 		}

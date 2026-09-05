@@ -10,6 +10,7 @@ import (
 	"mc/db"
 	"mc/handlers"
 	"mc/logicmodels"
+	"mc/pages"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
@@ -63,6 +64,7 @@ func main() {
 	}
 
 	lmStore := logicmodels.NewStore(mgr)
+	pagesStore := pages.NewStore(mgr)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -87,7 +89,7 @@ func main() {
 	})
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
-	handlers.Register(r, handlers.Deps{Store: store, Manager: mgr, LMStore: lmStore})
+	handlers.Register(r, handlers.Deps{Store: store, Manager: mgr, LMStore: lmStore, PagesStore: pagesStore})
 
 	addr := *host + ":" + *port
 	log.Printf("listening on %s, db=%s, upload_root=%s, managed_db=%s", addr, abs, store.GetString(settings.KeyUploadRoot), store.GetString(settings.KeyManagedDBPath))

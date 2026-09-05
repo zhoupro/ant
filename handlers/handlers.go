@@ -3,23 +3,26 @@ package handlers
 import (
 	"mc/datadb"
 	"mc/logicmodels"
+	"mc/pages"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
 )
 
 type Deps struct {
-	Store   *settings.Store
-	Manager *datadb.Manager
-	LMStore *logicmodels.Store
+	Store      *settings.Store
+	Manager    *datadb.Manager
+	LMStore    *logicmodels.Store
+	PagesStore *pages.Store
 }
 
 func Register(r *gin.Engine, deps Deps) {
 	uploadDeps := &UploadDeps{Store: deps.Store}
 	settingsDeps := &SettingsDeps{
-		Store:   deps.Store,
-		Manager: deps.Manager,
-		LMStore: deps.LMStore,
+		Store:        deps.Store,
+		Manager:      deps.Manager,
+		LMStore:      deps.LMStore,
+		PagesStore:   deps.PagesStore,
 		EditableKeys: map[string]struct{}{
 			settings.KeyUploadRoot:    {},
 			settings.KeyManagedDBPath: {},
@@ -28,6 +31,7 @@ func Register(r *gin.Engine, deps Deps) {
 
 	mgr := deps.Manager
 	lmStore := deps.LMStore
+	pagesStore := deps.PagesStore
 
 	api := r.Group("/api")
 	{
@@ -80,6 +84,14 @@ func Register(r *gin.Engine, deps Deps) {
 		api.POST("/runtime/:slug/rows", authRequired, rt.insert)
 		api.PUT("/runtime/:slug/rows/:pk", authRequired, rt.update)
 		api.DELETE("/runtime/:slug/rows/:pk", authRequired, rt.delete)
+
+		pg := NewPagesHandler(pagesStore)
+		api.GET("/pages", authRequired, pg.list)
+		api.POST("/pages", authRequired, pg.create)
+		api.GET("/pages/icons", authRequired, pg.icons)
+		api.GET("/pages/:id", authRequired, pg.get)
+		api.PUT("/pages/:id", authRequired, pg.update)
+		api.DELETE("/pages/:id", authRequired, pg.delete)
 	}
 
 	// Swagger routes are intentionally not registered here.
