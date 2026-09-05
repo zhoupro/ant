@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, RefreshCw, Sparkles, Table2, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import type { CreateTableInput, DBStatus } from "@/features/db/types";
 
 import { CreateTableDialog } from "./CreateTableDialog";
 import { DBLoadPanel } from "./DBLoadPanel";
-import { TableView } from "./TableView";
+import { ModelRuntime } from "@/components/logicmodels/ModelRuntime";
 
 interface DashboardProps {
   onGoToSettings: () => void;
@@ -27,10 +27,11 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
   const [status, setStatus] = useState<DBStatus | null>(null);
   const [tables, setTables] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
+  const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingTables, setLoadingTables] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [autoCreating, setAutoCreating] = useState<string | null>(null);
+  const [loadingRuntime, setLoadingRuntime] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     setLoadingStatus(true);
@@ -54,12 +55,15 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
       const r = await listTables();
       setTables(r.tables);
       if (active && !r.tables.includes(active)) setActive(null);
+      if (activeSlug && !r.tables.includes(activeSlug.split("auto_")[1])) {
+        // keep the activeSlug if the table still exists
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "获取表列表失败");
     } finally {
       setLoadingTables(false);
     }
-  }, [active]);
+  }, [active, activeSlug]);
 
   useEffect(() => {
     void refreshStatus();
@@ -73,8 +77,19 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
     if (!confirm(`确定删除表 "${name}" 吗?此操作不可恢复`)) return;
     try {
       await dropTable(name);
+      try {
+        await fetch(
+          `/api/models/${encodeURIComponent(`auto_${name}`)}`,
+          { method: "DELETE", credentials: "same-origin" },
+        );
+      } catch {
+        // ignore — model may not exist
+      }
       toast.success(`已删除 ${name}`);
-      if (active === name) setActive(null);
+      if (active === name) {
+        setActive(null);
+        setActiveSlug(null);
+      }
       await refreshTables();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "删除失败");
@@ -85,20 +100,24 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
     await createTable(input);
     setCreateOpen(false);
     await refreshTables();
-    toast.success("表已创建");
+    toast.success("表已创建,CRUD 接口已就绪");
+    try {
+      await autoCreateModel({ physical: input.name });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "默认模型生成失败");
+    }
   };
 
-  const handleAutoCreate = async (name: string) => {
-    if (autoCreating) return;
-    setAutoCreating(name);
+  const handleSelectTable = async (name: string) => {
+    setActive(name);
+    setLoadingRuntime(true);
     try {
       const row = await autoCreateModel({ physical: name });
-      toast.success(`已生成默认逻辑模型 · ${row.label}`);
-      onGoToModel(row.slug);
+      setActiveSlug(row.slug);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "生成失败");
+      toast.error(err instanceof Error ? err.message : "加载失败");
     } finally {
-      setAutoCreating(null);
+      setLoadingRuntime(false);
     }
   };
 
@@ -173,25 +192,11 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
                       <button
                         type="button"
                         className="flex flex-1 items-center gap-1.5 truncate text-left"
-                        onClick={() => setActive(t)}
+                        onClick={() => void handleSelectTable(t)}
                       >
                         <Table2 className="size-3.5 text-muted-foreground" />
                         <span className="truncate">{t}</span>
                       </button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={autoCreating !== null}
-                        onClick={() => void handleAutoCreate(t)}
-                        aria-label="生成默认逻辑模型"
-                        title="生成默认逻辑模型"
-                      >
-                        {autoCreating === t ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : (
-                          <Sparkles className="size-3" />
-                        )}
-                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-xs"
@@ -214,11 +219,26 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
           <div className="flex h-full items-center justify-center">
             <DBLoadPanel onGoToSettings={onGoToSettings} />
           </div>
-        ) : active ? (
-          <TableView
-            tableName={active}
-            onMutated={() => void refreshTables()}
+        ) : active && activeSlug ? (
+          <ModelRuntime
+            slug={activeSlug}
+            onBack={() => {
+              setActive(null);
+              setActiveSlug(null);
+            }}
+            onEdit={() => {
+              if (activeSlug) onGoToModel(activeSlug);
+            }}
+            onDeleted={() => {
+              setActive(null);
+              setActiveSlug(null);
+            }}
           />
+        ) : active && loadingRuntime ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            <Loader2 className="mr-2 size-4 animate-spin" />
+            正在生成默认 CRUD 接口...
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             请选择左侧的表,或点击「新建表」开始管理数据
