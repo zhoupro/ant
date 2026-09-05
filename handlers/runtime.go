@@ -241,10 +241,11 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		pkInSchema = true
 	}
 
+	quoted, _ := quoteIdent(root.Physical)
 	selectCols := []string{}
 	seen := map[string]bool{}
 	if !seen[pk] {
-		selectCols = append(selectCols, quoteCol(pk))
+		selectCols = append(selectCols, fmt.Sprintf("%s.%s", quoted, quoteCol(pk)))
 		seen[pk] = true
 	}
 	fieldsOut := []gin.H{
@@ -255,7 +256,7 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 			"business_type": "integer",
 			"editable":      false,
 			"required":      true,
-			"list_show":     true,
+			"list_show":     false,
 			"searchable":    false,
 			"sort":          -1,
 		},
@@ -265,7 +266,7 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 			continue
 		}
 		if !seen[f.Physical] {
-			selectCols = append(selectCols, quoteCol(f.Physical))
+			selectCols = append(selectCols, fmt.Sprintf("%s.%s", quoted, quoteCol(f.Physical)))
 			seen[f.Physical] = true
 		}
 		fieldsOut = append(fieldsOut, gin.H{
@@ -282,6 +283,84 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 			"options":       f.Options,
 		})
 	}
+
+	// belongs_to: relations where the FK lives on the root table.
+	// We LEFT JOIN each related table and append its list_show fields as extra columns.
+	joins := []string{}
+	for _, rel := range cfg.Relations {
+		if rel.Type != logicmodels.RelOneToOne && rel.Type != logicmodels.RelOneToMany {
+			continue
+		}
+		if rel.FromAlias != cfg.RootAlias {
+			continue
+		}
+		other, ok := h.findTable(cfg, rel.ToAlias)
+		if !ok {
+			continue
+		}
+		otherPT, err := readPhysicalSchema(gdb, other.Physical)
+		if err != nil {
+			continue
+		}
+		otherColSet := map[string]bool{}
+		for _, c := range otherPT.Columns {
+			otherColSet[c.Name] = true
+		}
+		// rel.FromColumn is the FK column on the root table;
+		// rel.ToColumn is the PK column on the related table.
+		if !physicalColSet[rel.FromColumn] || !otherColSet[rel.ToColumn] {
+			continue
+		}
+		relLabel := rel.Label
+		if relLabel == "" {
+			relLabel = other.Label
+		}
+		joinAlias := "rel_" + sanitizeIdent(rel.ID)
+		addedAny := false
+		for _, f := range other.Fields {
+			if !f.ListShow {
+				continue
+			}
+			if !otherColSet[f.Physical] {
+				continue
+			}
+			colKey := "__rel_" + rel.ID + "_" + f.Key
+			joinQuotedAlias, _ := quoteIdent(joinAlias)
+			selectCols = append(selectCols, fmt.Sprintf("%s.%s AS %s",
+				joinQuotedAlias,
+				quoteCol(f.Physical),
+				quoteCol(colKey),
+			))
+			fieldsOut = append(fieldsOut, gin.H{
+				"key":           colKey,
+				"physical":      colKey,
+				"label":         relLabel + " · " + f.Label,
+				"business_type": f.BusinessType,
+				"required":      false,
+				"editable":      false,
+				"list_show":     true,
+				"searchable":    false,
+				"sort":          1000 + f.Sort,
+				"placeholder":   "",
+				"options":       f.Options,
+			})
+			addedAny = true
+		}
+		if !addedAny {
+			continue
+		}
+		otherQuoted, _ := quoteIdent(other.Physical)
+		joinQuoted, _ := quoteIdent(joinAlias)
+		rootQuoted, _ := quoteIdent(root.Physical)
+		joins = append(joins, fmt.Sprintf("LEFT JOIN %s AS %s ON %s.%s = %s.%s",
+			otherQuoted,
+			joinQuoted,
+			rootQuoted,
+			quoteCol(rel.FromColumn),
+			joinQuoted,
+			quoteCol(rel.ToColumn),
+		))
+	}
 	sort.SliceStable(fieldsOut[1:], func(i, j int) bool {
 		ai, _ := fieldsOut[i+1]["sort"].(int)
 		aj, _ := fieldsOut[j+1]["sort"].(int)
@@ -293,7 +372,6 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		return ai < aj
 	})
 
-	quoted, _ := quoteIdent(root.Physical)
 	where := ""
 	args := []any{}
 	if search != "" {
@@ -320,8 +398,12 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		return
 	}
 
-	dataQ := fmt.Sprintf("SELECT %s FROM %s %s ORDER BY %s DESC LIMIT ? OFFSET ?",
-		strings.Join(selectCols, ", "), quoted, where, quoteCol(pk))
+	joinsClause := ""
+	if len(joins) > 0 {
+		joinsClause = " " + strings.Join(joins, " ")
+	}
+	dataQ := fmt.Sprintf("SELECT %s FROM %s%s %s ORDER BY %s.%s DESC LIMIT ? OFFSET ?",
+		strings.Join(selectCols, ", "), quoted, joinsClause, where, quoted, quoteCol(pk))
 	args = append(args, limit, offset)
 	dataRows := make([]map[string]any, 0)
 	if err := gdb.Raw(dataQ, args...).Scan(&dataRows).Error; err != nil {
@@ -753,6 +835,22 @@ func quoteCol(name string) string {
 		return `""`
 	}
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+func sanitizeIdent(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	out := b.String()
+	if out == "" || !(out[0] >= 'A' && out[0] <= 'Z') && !(out[0] >= 'a' && out[0] <= 'z') && out[0] != '_' {
+		out = "r_" + out
+	}
+	return out
 }
 
 func coerceValueForInsert(v any, f logicmodels.FieldConfig) (any, error) {

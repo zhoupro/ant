@@ -53,6 +53,7 @@ export function ModelRuntime({ slug, onBack, onEdit, onDeleted }: ModelRuntimePr
     total: number;
     limit: number;
     offset: number;
+    fields: RuntimeField[];
   } | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -92,6 +93,7 @@ export function ModelRuntime({ slug, onBack, onEdit, onDeleted }: ModelRuntimePr
         total: r.total,
         limit: r.limit,
         offset: r.offset,
+        fields: r.fields,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载数据失败");
@@ -173,9 +175,14 @@ export function ModelRuntime({ slug, onBack, onEdit, onDeleted }: ModelRuntimePr
     );
   }
 
-  const visibleFields = rootTable.fields.filter(
-    (f) => f.list_show || rootTable.primary_key === f.physical,
-  );
+  // Prefer the runtime-computed fields (which include any JOINed relation columns).
+  // Fall back to root table fields if rows haven't loaded yet.
+  const visibleFields =
+    rows && rows.fields && rows.fields.length > 0
+      ? rows.fields.filter((f) => f.list_show)
+      : rootTable.fields.filter(
+          (f) => f.list_show || rootTable.primary_key === f.physical,
+        );
 
   const pkName = rootTable.primary_key;
   const total = rows?.total ?? 0;

@@ -42,21 +42,21 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 sm:p-6"
       onClick={() => onOpenChange(false)}
     >
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          "w-full rounded-xl bg-card text-card-foreground shadow-xl ring-1 ring-foreground/10",
+          "flex w-full max-h-[calc(100vh-2rem)] flex-col rounded-xl bg-card text-card-foreground shadow-xl ring-1 ring-foreground/10 sm:max-h-[calc(100vh-3rem)]",
           widths[size],
           className
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {(title || description) && (
-          <div className="border-b px-5 py-4">
+          <div className="shrink-0 border-b px-5 py-4">
             {title && (
               <div className="text-base font-medium leading-snug">{title}</div>
             )}
@@ -67,9 +67,9 @@ export function Dialog({
             )}
           </div>
         )}
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-2 rounded-b-xl border-t bg-muted/50 px-5 py-3">
+          <div className="flex shrink-0 items-center justify-end gap-2 rounded-b-xl border-t bg-muted/50 px-5 py-3">
             {footer}
           </div>
         )}
