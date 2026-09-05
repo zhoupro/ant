@@ -1,4 +1,4 @@
-import { LogOut } from "lucide-react";
+import { BookOpen, LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -39,14 +39,31 @@ export function AppShell({
               · {username}
             </span>
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void onLogout()}
-          >
-            <LogOut className="size-3.5" />
-            退出
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              asChild
+            >
+              <a
+                href="/swagger/"
+                target="_blank"
+                rel="noreferrer"
+                title="OpenAPI / Swagger UI"
+              >
+                <BookOpen className="size-3.5" />
+                <span className="hidden sm:inline">API 文档</span>
+              </a>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void onLogout()}
+            >
+              <LogOut className="size-3.5" />
+              退出
+            </Button>
+          </div>
         </div>
         <nav className="mx-auto flex max-w-3xl gap-1 px-2 pb-2">
           {tabs.map((t) => (

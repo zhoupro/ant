@@ -79,5 +79,9 @@ func Register(r *gin.Engine, deps Deps) {
 		api.DELETE("/runtime/:slug/rows/:pk", authRequired, rt.delete)
 	}
 
+	// Swagger routes are intentionally not registered here.
+// They are registered in main.go before r.NoRoute to avoid the React index
+// fallback intercepting them on the trailing-slash variant.
+
 	r.Match([]string{"GET", "HEAD"}, "/uploads/:id", WithUploadDeps(serveUpload, uploadDeps))
 }

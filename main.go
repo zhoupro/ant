@@ -70,6 +70,10 @@ func main() {
 	r.Static("/assets", filepath.Join(*staticDir, "assets"))
 	r.StaticFile("/favicon.svg", filepath.Join(*staticDir, "favicon.svg"))
 	indexPath := filepath.Join(*staticDir, "index.html")
+	r.GET("/swagger", handlers.SwaggerUI)
+	r.GET("/swagger/", handlers.SwaggerUI)
+	r.GET("/swagger/index.html", handlers.SwaggerUI)
+	r.GET("/swagger/doc.json", handlers.SwaggerJSON)
 	r.StaticFile("/", indexPath)
 	r.NoRoute(func(c *gin.Context) {
 		if len(c.Request.URL.Path) >= 5 && c.Request.URL.Path[:5] == "/api/" {
