@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"mc/datadb"
+	"mc/logicmodels"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,7 @@ func Register(r *gin.Engine, deps Deps) {
 	}
 
 	mgr := deps.Manager
+	lmStore := logicmodels.NewStore()
 
 	api := r.Group("/api")
 	{
@@ -56,6 +58,24 @@ func Register(r *gin.Engine, deps Deps) {
 		api.POST("/tables", authRequired, th.create)
 		api.DELETE("/tables/:name", authRequired, th.drop)
 		api.POST("/tables/:name/columns", authRequired, th.addColumn)
+
+		lm := NewLogicModelsHandler(lmStore, mgr)
+		api.GET("/models", authRequired, lm.list)
+		api.POST("/models", authRequired, lm.save)
+		api.GET("/models/business-types", authRequired, lm.businessTypes)
+		api.GET("/models/tables", authRequired, lm.tables)
+		api.GET("/models/tables/:name/schema", authRequired, lm.tableSchema)
+		api.GET("/models/:slug", authRequired, lm.get)
+		api.PUT("/models/:slug", authRequired, lm.save)
+		api.DELETE("/models/:slug", authRequired, lm.delete)
+
+		rt := NewRuntimeHandler(lmStore, mgr)
+		api.GET("/runtime/:slug/schema", authRequired, rt.schema)
+		api.GET("/runtime/:slug/rows", authRequired, rt.rows)
+		api.GET("/runtime/:slug/rows/:pk", authRequired, rt.getRow)
+		api.POST("/runtime/:slug/rows", authRequired, rt.insert)
+		api.PUT("/runtime/:slug/rows/:pk", authRequired, rt.update)
+		api.DELETE("/runtime/:slug/rows/:pk", authRequired, rt.delete)
 	}
 
 	r.Match([]string{"GET", "HEAD"}, "/uploads/:id", WithUploadDeps(serveUpload, uploadDeps))

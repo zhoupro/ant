@@ -137,3 +137,23 @@ func listTablesLocked(gdb *gorm.DB) ([]string, error) {
 	}
 	return out, nil
 }
+
+type ForeignKey struct {
+	ID       int    `gorm:"column:id"`
+	Seq      int    `gorm:"column:seq"`
+	Table    string `gorm:"column:table"`
+	From     string `gorm:"column:from"`
+	To       string `gorm:"column:to"`
+	OnUpdate string `gorm:"column:on_update"`
+	OnDelete string `gorm:"column:on_delete"`
+	Match    string `gorm:"column:match"`
+}
+
+func ListForeignKeys(gdb *gorm.DB, table string) ([]ForeignKey, error) {
+	var rows []ForeignKey
+	q := fmt.Sprintf("PRAGMA foreign_key_list(%q)", table)
+	if err := gdb.Raw(q).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}

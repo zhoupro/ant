@@ -8,6 +8,7 @@ import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { Settings } from "@/components/Settings";
 import { Dashboard } from "@/components/db/Dashboard";
+import { ModelsList } from "@/components/logicmodels/ModelsList";
 import {
   changePassword,
   login,
@@ -102,6 +103,10 @@ export default function App() {
           <Files />
         ) : tab === "settings" ? (
           <Settings />
+        ) : tab === "models" ? (
+          <ModelsList
+            onGoToDB={() => setTab("db")}
+          />
         ) : (
           <Dashboard onGoToSettings={() => setTab("settings")} />
         )}

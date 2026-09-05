@@ -11,6 +11,17 @@ import type {
   RowInput,
   RowsResponse,
 } from "@/features/db/types";
+import type {
+  BusinessTypeInfo,
+  ModelConfig,
+  ModelRecord,
+  ModelSummary,
+  PhysicalTable,
+  RowDetail,
+  RowMutationInput,
+  RuntimeRowResponse,
+  RuntimeSchema,
+} from "@/features/logicmodels/types";
 
 const AUTH_BASE = "/api/auth";
 const DB_BASE = "/api/dbfile";
@@ -214,4 +225,115 @@ export function formatBytes(bytes?: number): string {
 export function absoluteUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   return `${window.location.origin}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+const MODELS_BASE = "/api/models";
+
+export function listModels(): Promise<ModelSummary[]> {
+  return request<ModelSummary[]>(MODELS_BASE);
+}
+
+export function getModel(slug: string): Promise<ModelRecord> {
+  return request<ModelRecord>(`${MODELS_BASE}/${encodeURIComponent(slug)}`);
+}
+
+export function saveModel(input: {
+  slug: string;
+  label: string;
+  description: string;
+  config: ModelConfig;
+}): Promise<ModelRecord> {
+  return request<ModelRecord>(
+    `${MODELS_BASE}/${encodeURIComponent(input.slug)}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+export function deleteModel(slug: string): Promise<null> {
+  return request<null>(`${MODELS_BASE}/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+}
+
+export function listModelTables(): Promise<{ tables: PhysicalTable[] }> {
+  return request<{ tables: PhysicalTable[] }>(`${MODELS_BASE}/tables`);
+}
+
+export function getModelTableSchema(
+  name: string,
+): Promise<PhysicalTable> {
+  return request<PhysicalTable>(
+    `${MODELS_BASE}/tables/${encodeURIComponent(name)}/schema`,
+  );
+}
+
+export function listBusinessTypes(): Promise<BusinessTypeInfo[]> {
+  return request<BusinessTypeInfo[]>(`${MODELS_BASE}/business-types`);
+}
+
+const RUNTIME_BASE = "/api/runtime";
+
+export function getRuntimeSchema(slug: string): Promise<RuntimeSchema> {
+  return request<RuntimeSchema>(
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/schema`,
+  );
+}
+
+export function listRuntimeRows(
+  slug: string,
+  opts: { limit?: number; offset?: number; search?: string } = {},
+): Promise<RuntimeRowResponse> {
+  const params = new URLSearchParams();
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+  if (opts.search) params.set("search", opts.search);
+  const qs = params.toString();
+  return request<RuntimeRowResponse>(
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function getRuntimeRow(
+  slug: string,
+  id: string | number,
+): Promise<RowDetail> {
+  return request<RowDetail>(
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/${encodeURIComponent(String(id))}`,
+  );
+}
+
+export function createRuntimeRow(
+  slug: string,
+  input: RowMutationInput,
+): Promise<unknown> {
+  return request(`${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRuntimeRow(
+  slug: string,
+  id: string | number,
+  input: RowMutationInput,
+): Promise<unknown> {
+  return request(
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/${encodeURIComponent(String(id))}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+export function deleteRuntimeRow(
+  slug: string,
+  id: string | number,
+): Promise<unknown> {
+  return request(
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/${encodeURIComponent(String(id))}`,
+    { method: "DELETE" },
+  );
+}
+
+export function generateSlug(): string {
+  const rnd = Math.random().toString(36).slice(2, 8);
+  return `model_${Date.now().toString(36)}_${rnd}`;
 }
