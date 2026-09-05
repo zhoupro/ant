@@ -62,6 +62,7 @@ func Register(r *gin.Engine, deps Deps) {
 		lm := NewLogicModelsHandler(lmStore, mgr)
 		api.GET("/models", authRequired, lm.list)
 		api.POST("/models", authRequired, lm.save)
+		api.POST("/models/auto", authRequired, lm.autoCreate)
 		api.GET("/models/business-types", authRequired, lm.businessTypes)
 		api.GET("/models/tables", authRequired, lm.tables)
 		api.GET("/models/tables/:name/schema", authRequired, lm.tableSchema)

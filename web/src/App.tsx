@@ -26,6 +26,7 @@ type View =
 export default function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [tab, setTab] = useState<HomeTab>("db");
+  const [pendingModelSlug, setPendingModelSlug] = useState<string | null>(null);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -106,9 +107,17 @@ export default function App() {
         ) : tab === "models" ? (
           <ModelsList
             onGoToDB={() => setTab("db")}
+            initialSlug={pendingModelSlug}
+            onInitialSlugConsumed={() => setPendingModelSlug(null)}
           />
         ) : (
-          <Dashboard onGoToSettings={() => setTab("settings")} />
+          <Dashboard
+            onGoToSettings={() => setTab("settings")}
+            onGoToModel={(slug) => {
+              setPendingModelSlug(slug);
+              setTab("models");
+            }}
+          />
         )}
       </AppShell>
       <Toaster position="top-center" richColors />

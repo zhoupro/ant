@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -191,6 +192,106 @@ func (h *LogicModelsHandler) businessTypes(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"data": out})
+}
+
+type autoModelInput struct {
+	Physical string `json:"physical"`
+	Slug     string `json:"slug,omitempty"`
+	Label    string `json:"label,omitempty"`
+}
+
+func (h *LogicModelsHandler) autoCreate(c *gin.Context) {
+	gdb, ok := h.db(c)
+	if !ok {
+		return
+	}
+	var in autoModelInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(in.Physical) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供物理表名"})
+		return
+	}
+	pt, err := readPhysicalSchema(gdb, in.Physical)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(pt.Columns) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "表没有字段"})
+		return
+	}
+	pk := pt.Columns[0].Name
+	if len(pt.PrimaryKeys) > 0 {
+		pk = pt.PrimaryKeys[0]
+	}
+	slug := strings.TrimSpace(in.Slug)
+	if slug == "" {
+		slug = "auto_" + in.Physical
+	}
+	label := strings.TrimSpace(in.Label)
+	if label == "" {
+		label = humanize(in.Physical)
+	}
+	fields := make([]logicmodels.FieldConfig, 0, len(pt.Columns))
+	for i, col := range pt.Columns {
+		isPK := col.PrimaryKey
+		bizType := inferBusinessType(col.Type)
+		fields = append(fields, logicmodels.FieldConfig{
+			Key:          col.Name,
+			Physical:     col.Name,
+			Label:        humanize(col.Name),
+			BusinessType: bizType,
+			Required:     col.NotNull && !isPK,
+			Editable:     !isPK,
+			ListShow:     i <= 4,
+			Searchable:   !isPK && bizType == "text",
+			Sort:         i,
+		})
+	}
+	cfg := logicmodels.ModelConfig{
+		RootAlias: in.Physical,
+		Tables: []logicmodels.TableConfig{
+			{
+				Alias:      in.Physical,
+				Physical:   in.Physical,
+				Label:      label,
+				PrimaryKey: pk,
+				Fields:     fields,
+			},
+		},
+		Relations: []logicmodels.RelationConfig{},
+	}
+	row, err := h.store.Upsert(slug, label, "", cfg)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": row})
+}
+
+func humanize(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	upper := true
+	for _, r := range s {
+		if r == '_' || r == '-' || r == ' ' {
+			b.WriteRune(' ')
+			upper = true
+			continue
+		}
+		if upper {
+			b.WriteRune([]rune{unicode.ToUpper(r)}[0])
+			upper = false
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func (h *LogicModelsHandler) db(c *gin.Context) (*gorm.DB, bool) {

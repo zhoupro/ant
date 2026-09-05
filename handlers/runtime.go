@@ -591,8 +591,8 @@ func (h *RuntimeHandler) findTable(cfg logicmodels.ModelConfig, alias string) (*
 }
 
 type runtimeRowInput struct {
-	Values    map[string]any     `json:"values"`
-	Relations map[string][]any   `json:"relations,omitempty"`
+	Values    map[string]any   `json:"values"`
+	Relations map[string][]any `json:"relations,omitempty"`
 }
 
 func (h *RuntimeHandler) insert(c *gin.Context) {

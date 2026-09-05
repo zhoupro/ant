@@ -30,9 +30,11 @@ import { ModelRuntime } from "./ModelRuntime";
 
 interface ModelsListProps {
   onGoToDB: () => void;
+  initialSlug?: string | null;
+  onInitialSlugConsumed?: () => void;
 }
 
-export function ModelsList({ onGoToDB }: ModelsListProps) {
+export function ModelsList({ onGoToDB, initialSlug, onInitialSlugConsumed }: ModelsListProps) {
   const [items, setItems] = useState<ModelSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<
@@ -46,6 +48,13 @@ export function ModelsList({ onGoToDB }: ModelsListProps) {
   >(undefined);
   const [creating, setCreating] = useState(false);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialSlug) {
+      setActiveSlug(initialSlug);
+      onInitialSlugConsumed?.();
+    }
+  }, [initialSlug, onInitialSlugConsumed]);
 
   const refresh = useCallback(async () => {
     setLoading(true);

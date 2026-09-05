@@ -32,7 +32,6 @@ import type {
   ExpandedRow,
   RowMutationInput,
   RuntimeField,
-  RuntimeRelation,
   RuntimeSchema,
 } from "@/features/logicmodels/types";
 
@@ -689,10 +688,6 @@ function RowFormDialog({
 
   if (!rootTable) return null;
 
-  const m2mRelations = schema.relations.filter(
-    (r) => r.type === "many_to_many" && r.from_alias === rootTable.alias,
-  );
-
   const handleSubmit = async () => {
     setError(null);
     setSubmitting(true);
@@ -711,7 +706,7 @@ function RowFormDialog({
       }
       const relationsPayload: Record<string, number[]> = {};
       for (const [k, v] of Object.entries(m2m)) {
-        relationsPayload[k] = v;
+        if (v.length > 0) relationsPayload[k] = v;
       }
       await onSubmit({
         values: payload,
@@ -743,48 +738,40 @@ function RowFormDialog({
         </>
       }
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields
-          .filter((f) => mode === "insert" || f.editable)
-          .map((f) => (
-            <FieldInput
-              key={f.key}
-              field={f}
-              value={values[f.key] ?? ""}
-              jsonDraft={jsonDrafts[f.key]}
-              onChange={(v) => {
-                setValues((prev) => ({ ...prev, [f.key]: v }));
-              }}
-              onJsonDraftChange={(v) => {
-                setJsonDrafts((prev) => ({ ...prev, [f.key]: v }));
-                try {
-                  JSON.parse(v);
-                  setValues((prev) => ({ ...prev, [f.key]: v }));
-                } catch {
-                  // keep raw draft, will throw on submit
-                }
-              }}
-            />
-          ))}
-      </div>
-
-      {m2mRelations.length > 0 ? (
-        <>
-          <Separator />
-          <div className="space-y-3">
-            <div className="text-xs text-muted-foreground">多对多关联</div>
-            {m2mRelations.map((r) => (
-              <ManyToManyPicker
-                key={r.id}
-                relation={r}
-                schema={schema}
-                value={m2m[r.id] ?? []}
-                onChange={(ids) => setM2m((prev) => ({ ...prev, [r.id]: ids }))}
-              />
-            ))}
+      <div className="space-y-5">
+        <section className="space-y-3">
+          <header className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">
+              {rootTable.label || rootTable.alias}
+              <span className="ml-1 text-xs text-muted-foreground">根表</span>
+            </h3>
+          </header>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {fields
+              .filter((f) => mode === "insert" || f.editable)
+              .map((f) => (
+                <FieldInput
+                  key={f.key}
+                  field={f}
+                  value={values[f.key] ?? ""}
+                  jsonDraft={jsonDrafts[f.key]}
+                  onChange={(v) => {
+                    setValues((prev) => ({ ...prev, [f.key]: v }));
+                  }}
+                  onJsonDraftChange={(v) => {
+                    setJsonDrafts((prev) => ({ ...prev, [f.key]: v }));
+                    try {
+                      JSON.parse(v);
+                      setValues((prev) => ({ ...prev, [f.key]: v }));
+                    } catch {
+                      // keep raw draft, will throw on submit
+                    }
+                  }}
+                />
+              ))}
           </div>
-        </>
-      ) : null}
+        </section>
+      </div>
 
       {error ? (
         <p className="mt-2 text-xs text-destructive">{error}</p>
@@ -1101,111 +1088,6 @@ onChange={async (e) => {
       </div>
     </div>
   );
-}
-
-interface ManyToManyPickerProps {
-  relation: RuntimeRelation;
-  schema: RuntimeSchema;
-  value: number[];
-  onChange: (ids: number[]) => void;
-}
-
-function ManyToManyPicker({ relation, schema, value, onChange }: ManyToManyPickerProps) {
-  const target = schema.tables.find((t) => t.alias === relation.from_alias);
-  const [options, setOptions] = useState<{ id: string; label: string }[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (!target) return;
-      setLoading(true);
-      try {
-        const res = await fetch(
-          `${basePath()}/api/tables/${encodeURIComponent(target.physical)}/rows?limit=500`,
-          { credentials: "same-origin" },
-        );
-        if (!res.ok) throw new Error("加载关联项失败");
-        const body = await res.json();
-        const items = (body.data?.rows ?? []) as Record<string, unknown>[];
-        const opts = items.map((row) => ({
-          id: String(row[target.primary_key] ?? ""),
-          label: pickLabel(row, target.fields.map((f) => f.physical)) ?? String(row[target.primary_key] ?? ""),
-        }));
-        if (!cancelled) setOptions(opts);
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : "加载关联项失败");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [target]);
-
-  if (!target) return null;
-
-  return (
-    <div className="space-y-1 rounded-md border bg-muted/20 p-2">
-      <div className="flex items-center justify-between text-xs">
-        <span>
-          {relation.label || target.label}{" "}
-          <span className="text-muted-foreground">({target.label})</span>
-        </span>
-        <span className="text-[10px] text-muted-foreground">
-          多对多 · 共 {options.length} 项
-        </span>
-      </div>
-      {loading ? (
-        <p className="text-[11px] text-muted-foreground">加载中…</p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {options.map((o) => {
-            const id = Number(o.id);
-            const selected = value.includes(id);
-            return (
-              <button
-                type="button"
-                key={o.id}
-                onClick={() => {
-                  if (selected) onChange(value.filter((x) => x !== id));
-                  else onChange([...value, id]);
-                }}
-                className={
-                  selected
-                    ? "rounded-md bg-primary px-2 py-0.5 text-xs text-primary-foreground"
-                    : "rounded-md border bg-background px-2 py-0.5 text-xs hover:bg-muted"
-                }
-              >
-                {o.label}
-              </button>
-            );
-          })}
-          {options.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">暂无关联项</p>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function pickLabel(row: Record<string, unknown>, candidates: string[]): string | null {
-  for (const k of candidates) {
-    const v = row[k];
-    if (typeof v === "string" && v.trim() !== "") return v;
-    if (typeof v === "number") return String(v);
-  }
-  return null;
-}
-
-function basePath(): string {
-  if (typeof window === "undefined") return "";
-  return window.location.origin;
 }
 
 function tryParseList(v: string): string[] {

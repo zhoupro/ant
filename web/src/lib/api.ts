@@ -249,6 +249,17 @@ export function saveModel(input: {
   );
 }
 
+export function autoCreateModel(input: {
+  physical: string;
+  slug?: string;
+  label?: string;
+}): Promise<ModelRecord> {
+  return request<ModelRecord>(`${MODELS_BASE}/auto`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function deleteModel(slug: string): Promise<null> {
   return request<null>(`${MODELS_BASE}/${encodeURIComponent(slug)}`, {
     method: "DELETE",

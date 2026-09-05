@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Sparkles, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  autoCreateModel,
   createTable,
   dropTable,
   formatBytes,
@@ -19,15 +20,17 @@ import { TableView } from "./TableView";
 
 interface DashboardProps {
   onGoToSettings: () => void;
+  onGoToModel: (slug: string) => void;
 }
 
-export function Dashboard({ onGoToSettings }: DashboardProps) {
+export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
   const [status, setStatus] = useState<DBStatus | null>(null);
   const [tables, setTables] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingTables, setLoadingTables] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [autoCreating, setAutoCreating] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
     setLoadingStatus(true);
@@ -83,6 +86,20 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
     setCreateOpen(false);
     await refreshTables();
     toast.success("表已创建");
+  };
+
+  const handleAutoCreate = async (name: string) => {
+    if (autoCreating) return;
+    setAutoCreating(name);
+    try {
+      const row = await autoCreateModel({ physical: name });
+      toast.success(`已生成默认逻辑模型 · ${row.label}`);
+      onGoToModel(row.slug);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "生成失败");
+    } finally {
+      setAutoCreating(null);
+    }
   };
 
   return (
@@ -161,6 +178,20 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
                         <Table2 className="size-3.5 text-muted-foreground" />
                         <span className="truncate">{t}</span>
                       </button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={autoCreating !== null}
+                        onClick={() => void handleAutoCreate(t)}
+                        aria-label="生成默认逻辑模型"
+                        title="生成默认逻辑模型"
+                      >
+                        {autoCreating === t ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="size-3" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-xs"
