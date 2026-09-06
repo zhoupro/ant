@@ -1,9 +1,9 @@
-import * as LucideIcons from "lucide-react";
-import { Home as HomeIcon, Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon } from "lucide-react";
 import { useMemo } from "react";
 
 import { cn } from "@/lib/utils";
 import type { Page } from "@/features/pages/types";
+import { renderIcon } from "@/features/pages/icon";
 
 interface BottomNavProps {
   pages: Page[];
@@ -12,24 +12,20 @@ interface BottomNavProps {
   onGoToSettings: () => void;
 }
 
+const TOP_SLOTS = 4;
+
 export function BottomNav({ pages, activeId, onSelect, onGoToSettings }: BottomNavProps) {
   const topLevel = useMemo(
     () => pages.filter((p) => !p.parent_id).sort((a, b) => a.sort - b.sort),
     [pages],
   );
-  const byParent = useMemo(() => {
-    const m = new Map<string, Page[]>();
-    for (const p of pages) {
-      if (!p.parent_id) continue;
-      const list = m.get(p.parent_id) ?? [];
-      list.push(p);
-      m.set(p.parent_id, list);
-    }
-    for (const [, list] of m) {
-      list.sort((a, b) => a.sort - b.sort);
-    }
-    return m;
-  }, [pages]);
+
+  const active = pages.find((p) => p.id === activeId) ?? null;
+  const activeTopLevel = active && !active.parent_id
+    ? active
+    : active && active.parent_id
+      ? pages.find((p) => p.id === active.parent_id) ?? null
+      : null;
 
   if (topLevel.length === 0) {
     return (
@@ -50,8 +46,8 @@ export function BottomNav({ pages, activeId, onSelect, onGoToSettings }: BottomN
     );
   }
 
-  const pageSlots = Math.min(topLevel.length, 4);
-  const cols = pageSlots + 1;
+  const slots = topLevel.slice(0, TOP_SLOTS);
+  const cols = slots.length + 1;
 
   return (
     <nav
@@ -59,47 +55,35 @@ export function BottomNav({ pages, activeId, onSelect, onGoToSettings }: BottomN
       className="sticky bottom-0 z-10 grid w-full border-t border-border/60 bg-background/95 backdrop-blur"
       style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
     >
-      {topLevel.slice(0, pageSlots).map((page) => {
+      {slots.map((page) => {
         const Icon = renderIcon(page.icon);
-        const active = activeId === page.id;
-        const children = byParent.get(page.id) ?? [];
+        const isActive = activeId === page.id;
+        const isParentActive =
+          !isActive && activeTopLevel?.id === page.id;
         return (
-          <div key={page.id} className="relative">
-            <button
-              type="button"
-              onClick={() => onSelect(page)}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex w-full flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
-                active
-                  ? "text-foreground"
+          <button
+            key={page.id}
+            type="button"
+            onClick={() => onSelect(page)}
+            aria-current={isActive ? "page" : undefined}
+            title={`${page.label} (/${page.slug})`}
+            className={cn(
+              "relative flex w-full flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+              isActive
+                ? "text-foreground"
+                : isParentActive
+                  ? "text-foreground/80"
                   : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon className="size-5" />
-              <span className="truncate px-1">{page.label}</span>
-              {active ? (
-                <span className="absolute left-1/2 top-0 h-0.5 w-6 -translate-x-1/2 rounded-full bg-foreground" />
-              ) : null}
-            </button>
-            {children.length > 0 ? (
-              <div className="absolute bottom-full left-1/2 hidden w-40 -translate-x-1/2 pb-1 group-hover:block">
-                <ul className="rounded-md border bg-card p-1 text-xs shadow-md">
-                  {children.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => onSelect(c)}
-                        className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left hover:bg-muted"
-                      >
-                        <span>{c.label}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            )}
+          >
+            <Icon className="size-5" />
+            <span className="truncate px-1">{page.label}</span>
+            {isActive ? (
+              <span className="absolute left-1/2 top-0 h-0.5 w-6 -translate-x-1/2 rounded-full bg-foreground" />
+            ) : isParentActive ? (
+              <span className="absolute left-1/2 top-0 h-0.5 w-4 -translate-x-1/2 rounded-full bg-muted-foreground/40" />
             ) : null}
-          </div>
+          </button>
         );
       })}
       <button
@@ -113,11 +97,4 @@ export function BottomNav({ pages, activeId, onSelect, onGoToSettings }: BottomN
       </button>
     </nav>
   );
-}
-
-function renderIcon(name: string): React.ComponentType<{ className?: string }> {
-  if (name && (LucideIcons as Record<string, unknown>)[name]) {
-    return LucideIcons[name as keyof typeof LucideIcons] as React.ComponentType<{ className?: string }>;
-  }
-  return HomeIcon;
 }
