@@ -1,6 +1,6 @@
 # MC Web
 
-基于 Vite + React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui (Radix 风格) 的前端工程，替换原 `static/` 下的 CDN 方案。
+`MC Notes` 的前端工程，Vite + React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui。完整说明见仓库根目录 [`README.md`](../README.md)。
 
 ## 常用命令
 
@@ -23,23 +23,36 @@ SKIP_WEB_BUILD=1 ./restart.sh 8080  # 跳过前端构建，仅重建后端
 
 ```
 src/
-├── App.tsx                # 顶层页面：列表 + 编辑 Sheet + 删除 AlertDialog
-├── main.tsx               # createRoot 入口
-├── index.css              # Tailwind v4 + shadcn 主题变量
+├── App.tsx                    # 顶层路由：home / files / db / models / pages / settings
+├── main.tsx                   # createRoot 入口
+├── index.css                  # Tailwind v4 + shadcn 主题变量
 ├── lib/
-│   ├── api.ts             # /api/notes 封装 + 日期格式化
-│   └── utils.ts           # cn() (shadcn 自动生成)
-├── features/notes/
-│   └── types.ts           # Note 类型
+│   ├── api.ts                 # /api/* 封装 + 通用格式化
+│   └── utils.ts               # cn() (shadcn 自动生成)
+├── features/                  # 按领域拆分的类型
+│   ├── auth/types.ts
+│   ├── db/types.ts
+│   ├── logicmodels/types.ts
+│   └── pages/
+│       ├── types.ts
+│       └── icon.ts            # lucide-react 图标名 -> 组件
 └── components/
-    ├── TopBar.tsx         # 顶部栏（标题 + ＋ 新建）
-    ├── NoteCard.tsx       # 列表卡片
-    ├── NoteEditor.tsx     # shadcn Sheet 编辑弹层 + AlertDialog 删除确认
-    └── ui/                # shadcn 自动生成的 UI 原子组件
+    ├── AppShell.tsx           # 顶部布局 + Tab 栏（首页隐藏）
+    ├── LoginForm.tsx
+    ├── ChangePasswordForm.tsx
+    ├── Settings.tsx           # 设置中心
+    ├── Files.tsx              # 文件上传 / 列表 / 删除
+    ├── pages/
+    │   ├── HomeView.tsx       # 首页（一级 + 二级菜单、运行时）
+    │   ├── BottomNav.tsx      # 一级菜单
+    │   └── PagesList.tsx      # 页面配置列表
+    ├── db/                    # 受管库：Dashboard / TableView / RowEditor / Dialogs
+    ├── logicmodels/           # 逻辑模型：ModelsList / ModelEditor / ModelRuntime
+    └── ui/                    # shadcn 自动生成的 UI 原子组件
 ```
 
 ## 与后端的契约
 
-所有请求走 `/api/notes`，由 Go Gin 提供。`vite.config.ts` 的 dev proxy 将 `/api` 反代到 `http://127.0.0.1:8080`，生产由 Gin 同一进程服务（详见 `main.go`）。
+所有请求走 `/api/*`，由 Go Gin 提供。`vite.config.ts` 的 dev proxy 将 `/api` 反代到 `http://127.0.0.1:8080`，生产由 Gin 同一进程服务（详见仓库根 `main.go`）。
 
-字段定义见 `src/features/notes/types.ts`，必须与 `models/models.go` 的 JSON tag 一致。
+字段定义见各 `features/*/types.ts`，必须与 Go 侧 `models/`、`logicmodels/` 的 JSON tag 一致。
