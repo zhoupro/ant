@@ -42,6 +42,7 @@ func Register(r *gin.Engine, deps Deps) {
 
 		api.GET("/auth/tokens", authRequired, listAPITokens)
 		api.POST("/auth/tokens", authRequired, createAPIToken)
+		api.GET("/auth/tokens/:id/plain", authRequired, revealAPIToken)
 		api.DELETE("/auth/tokens/:id", authRequired, revokeAPIToken)
 
 		api.POST("/uploads", authRequired, WithUploadDeps(upload, uploadDeps))

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  Check,
   Copy,
   KeyRound,
   Loader2,
@@ -23,8 +24,10 @@ import {
   createAPIToken,
   formatDateTime,
   listAPITokens,
+  revealAPIToken,
   revokeAPIToken,
 } from "@/lib/api";
+import { copyToClipboard } from "@/lib/utils";
 import type { APIToken } from "@/features/auth/types";
 
 export function APITokens() {
@@ -40,6 +43,8 @@ export function APITokens() {
     plain: string;
   } | null>(null);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [copyingId, setCopyingId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const refreshTokens = useCallback(async () => {
     setTokensLoading(true);
@@ -101,6 +106,32 @@ export function APITokens() {
     [refreshTokens],
   );
 
+  const handleCopyToken = useCallback(async (t: APIToken) => {
+    setCopyingId(t.id);
+    try {
+      const { plain, revoked, expired } = await revealAPIToken(t.id);
+      const ok = await copyToClipboard(plain);
+      if (ok) {
+        toast.success(`令牌「${t.name}」已复制到剪贴板`);
+        setCopiedId(t.id);
+        window.setTimeout(() => {
+          setCopiedId((cur) => (cur === t.id ? null : cur));
+        }, 1500);
+      } else {
+        toast.error("复制失败，请手动选中复制");
+      }
+      if (revoked || expired) {
+        toast.warning(
+          `提示：该令牌已${revoked ? "吊销" : "过期"}，复制仅供存档，不能再用于认证。`,
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "复制失败");
+    } finally {
+      setCopyingId((cur) => (cur === t.id ? null : cur));
+    }
+  }, []);
+
   return (
     <Card className="w-full max-w-2xl shadow-sm">
       <CardHeader>
@@ -110,7 +141,7 @@ export function APITokens() {
         </CardTitle>
         <CardDescription>
           用于通过 <code className="font-mono">Authorization: Bearer &lt;token&gt;</code>{" "}
-          访问受保护 API。明文仅在创建时返回一次，请妥善保存。
+          访问受保护 API。可随时点击「复制」重新获取明文。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -165,7 +196,24 @@ export function APITokens() {
                       {status}
                     </span>
                   </div>
-                  <div className="flex items-center justify-end">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={copyingId === t.id}
+                      onClick={() => void handleCopyToken(t)}
+                      title="复制明文到剪贴板"
+                    >
+                      {copyingId === t.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : copiedId === t.id ? (
+                        <Check className="size-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="size-3.5" />
+                      )}
+                      {copiedId === t.id ? "已复制" : "复制"}
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -277,7 +325,7 @@ export function APITokens() {
             />
           </div>
           <p className="text-[11px] text-muted-foreground">
-            创建后明文仅展示一次，请立刻复制保存。
+            创建后会立刻展示明文。之后也可在列表中点击「复制」重新获取。
           </p>
         </div>
       </Dialog>
@@ -288,7 +336,7 @@ export function APITokens() {
           if (!open) setIssuedToken(null);
         }}
         title="请复制并妥善保存新令牌"
-        description="关闭此对话框后将无法再次查看明文。"
+        description="关闭后可在列表中再次点击「复制」重新获取明文。"
         size="md"
         footer={
           <Button size="sm" onClick={() => setIssuedToken(null)}>
@@ -315,10 +363,10 @@ export function APITokens() {
                   size="sm"
                   variant="outline"
                   onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(issuedToken.plain);
+                    const ok = await copyToClipboard(issuedToken.plain);
+                    if (ok) {
                       toast.success("已复制到剪贴板");
-                    } catch {
+                    } else {
                       toast.error("复制失败，请手动选中复制");
                     }
                   }}

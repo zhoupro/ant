@@ -40,6 +40,7 @@ type APIToken struct {
 	Name        string     `gorm:"size:64;not null" json:"name"`
 	Prefix      string     `gorm:"size:16;not null" json:"prefix"`
 	TokenHash   string     `gorm:"size:64;uniqueIndex;not null" json:"-"`
+	Plain       string     `gorm:"size:128" json:"-"`
 	ExpiresAt   *time.Time `gorm:"index" json:"expires_at,omitempty"`
 	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt   *time.Time `gorm:"index" json:"revoked_at,omitempty"`

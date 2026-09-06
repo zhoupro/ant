@@ -632,12 +632,16 @@ func addAuthPaths(p gin.H) {
 	}}
 	p["/api/auth/tokens"] = gin.H{
 		"get": op("auth", "List API tokens", "List API tokens owned by the current user. Plaintexts are never returned.", nil, []gin.H{apiTokenListResp, errResp()}),
-		"post": op("auth", "Create API token", "Issue a new API token. The plaintext is returned only in this response and cannot be retrieved later. Use it as `Authorization: Bearer <plain>`.", []gin.H{
+		"post": op("auth", "Create API token", "Issue a new API token. The plaintext is returned in this response and remains retrievable via `GET /api/auth/tokens/{id}/plain` afterwards. Use it as `Authorization: Bearer <plain>`.", []gin.H{
 			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/CreateAPITokenInput"}},
 		}, []gin.H{
 			{"code": "200", "desc": "Created token with one-time plaintext.", "schema": gin.H{"$ref": "#/components/schemas/CreatedAPIToken"}},
 			errResp(),
 		}),
+	}
+	p["/api/auth/tokens/{id}/plain"] = gin.H{
+		"parameters": []gin.H{{"name": "id", "in": "path", "required": true, "type": "integer"}},
+		"get": op("auth", "Reveal API token plaintext", "Return the stored plaintext for an existing token so the caller can copy it. Available for tokens created after the reveal feature was enabled.", nil, []gin.H{okResp("Plaintext plus revoked/expired flags."), errResp()}),
 	}
 	p["/api/auth/tokens/{id}"] = gin.H{
 		"parameters": []gin.H{{"name": "id", "in": "path", "required": true, "type": "integer"}},

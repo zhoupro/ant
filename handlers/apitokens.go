@@ -86,6 +86,7 @@ func createAPIToken(c *gin.Context) {
 		Name:      name,
 		Prefix:    prefix,
 		TokenHash: hash,
+		Plain:     raw,
 	}
 	if in.ExpiresIn > 0 {
 		exp := time.Now().Add(time.Duration(in.ExpiresIn) * 24 * time.Hour)
@@ -99,6 +100,31 @@ func createAPIToken(c *gin.Context) {
 		"data": gin.H{
 			"token": apiTokenPayloadFrom(&tok),
 			"plain": raw,
+		},
+	})
+}
+
+func revealAPIToken(c *gin.Context) {
+	user := currentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
+	id := c.Param("id")
+	var tok models.APIToken
+	if err := db.DB.Where("id = ? AND user_id = ?", id, user.ID).First(&tok).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "令牌不存在"})
+		return
+	}
+	if tok.Plain == "" {
+		c.JSON(http.StatusGone, gin.H{"error": "明文不可用（创建时间早于复制功能上线）"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"plain": tok.Plain,
+			"revoked": tok.RevokedAt != nil,
+			"expired": tok.ExpiresAt != nil && tok.ExpiresAt.Before(time.Now()),
 		},
 	})
 }

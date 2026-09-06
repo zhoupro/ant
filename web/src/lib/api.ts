@@ -93,6 +93,14 @@ export function revokeAPIToken(id: number): Promise<{ ok: boolean }> {
   );
 }
 
+export function revealAPIToken(
+  id: number,
+): Promise<{ plain: string; revoked: boolean; expired: boolean }> {
+  return request<{ plain: string; revoked: boolean; expired: boolean }>(
+    `${AUTH_BASE}/tokens/${encodeURIComponent(String(id))}/plain`,
+  );
+}
+
 export interface Attachment {
   id: number;
   user_id: number;
