@@ -575,11 +575,33 @@ function CellValue({ value, field }: CellValueProps) {
   }
   switch (field.business_type) {
     case "image":
+      return (
+        <a
+          href={absoluteUrl(String(value))}
+          target="_blank"
+          rel="noreferrer"
+          className="block"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <img
+            src={absoluteUrl(String(value))}
+            alt=""
+            className="h-10 w-10 rounded border object-cover"
+            loading="lazy"
+          />
+        </a>
+      );
     case "file":
       return (
-        <span className="font-mono text-[10px]">
+        <a
+          href={absoluteUrl(String(value))}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="break-all text-[10px] text-foreground underline-offset-2 hover:underline"
+        >
           {String(value)}
-        </span>
+        </a>
       );
     case "boolean":
       return value ? "✓" : "✗";
