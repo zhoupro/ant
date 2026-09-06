@@ -182,10 +182,7 @@ interface SubPageTabsProps {
 
 function SubPageTabs({ subPages, activeChildSlug, onSelectSub }: SubPageTabsProps) {
   return (
-    <div
-      className="grid w-full border-t border-border/60 bg-background/95 backdrop-blur"
-      style={{ gridTemplateColumns: `repeat(${subPages.length}, minmax(0, 1fr))` }}
-    >
+    <div className="flex w-full justify-start border-t border-border/60 bg-background/95 backdrop-blur">
       {subPages.map((sub) => {
         const Icon = renderIcon(sub.icon);
         const active = sub.slug === activeChildSlug;
@@ -197,14 +194,14 @@ function SubPageTabs({ subPages, activeChildSlug, onSelectSub }: SubPageTabsProp
             aria-current={active ? "page" : undefined}
             title={`${sub.label} (/${sub.slug})`}
             className={cn(
-              "relative flex w-full flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+              "relative flex min-w-[72px] flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
               active
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
             <Icon className="size-5" />
-            <span className="truncate px-1">{sub.label}</span>
+            <span className="truncate px-2">{sub.label}</span>
             {active ? (
               <span className="absolute left-1/2 top-0 h-0.5 w-6 -translate-x-1/2 rounded-full bg-foreground" />
             ) : null}
