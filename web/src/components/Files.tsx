@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Copy,
   FileText,
+  ImageIcon,
   Loader2,
   Trash2,
   UploadCloud,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
   absoluteUrl,
@@ -32,11 +35,19 @@ const dragHoverClass =
 const dragIdleClass =
   "border-dashed border-border bg-muted/40 text-muted-foreground hover:bg-muted/60";
 
+function isImage(item: Pick<Attachment, "content_type" | "original_name">) {
+  if (item.content_type && item.content_type.startsWith("image/")) return true;
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif|heic|heif)$/i.test(
+    item.original_name,
+  );
+}
+
 export function Files() {
   const [items, setItems] = useState<Attachment[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [preview, setPreview] = useState<Attachment | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -187,46 +198,87 @@ export function Files() {
               加载中…
             </li>
           ) : items && items.length > 0 ? (
-            items.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center gap-3 px-3 py-2.5 text-sm"
-              >
-                <FileText className="size-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">
-                    {item.original_name}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {formatBytes(item.size)} · {formatDateTime(item.created_at)} ·{" "}
-                    <a
-                      href={absoluteUrl(item.url)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline-offset-2 hover:underline"
+            items.map((item) => {
+              const image = isImage(item);
+              return (
+                <li
+                  key={item.id}
+                  className="flex items-center gap-3 px-3 py-2.5 text-sm"
+                >
+                  {image ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreview(item)}
+                      className="group relative size-10 shrink-0 overflow-hidden rounded-md bg-muted ring-1 ring-foreground/10 transition hover:ring-foreground/30"
+                      aria-label={`预览 ${item.original_name}`}
                     >
-                      {item.url}
-                    </a>
+                      <img
+                        src={absoluteUrl(item.url)}
+                        alt=""
+                        loading="lazy"
+                        className="size-full object-cover transition group-hover:scale-105"
+                      />
+                    </button>
+                  ) : (
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <FileText className="size-4" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">
+                      {image ? (
+                        <button
+                          type="button"
+                          onClick={() => setPreview(item)}
+                          className="text-left hover:underline underline-offset-2"
+                        >
+                          {item.original_name}
+                        </button>
+                      ) : (
+                        item.original_name
+                      )}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {formatBytes(item.size)} · {formatDateTime(item.created_at)} ·{" "}
+                      <a
+                        href={absoluteUrl(item.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline-offset-2 hover:underline"
+                      >
+                        {item.url}
+                      </a>
+                    </div>
                   </div>
-                </div>
-                <Button
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label="复制链接"
-                  onClick={() => void onCopy(item.url)}
-                >
-                  <Copy className="size-3.5" />
-                </Button>
-                <Button
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label="删除"
-                  onClick={() => void onDelete(item)}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </li>
-            ))
+                  {image && (
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label="预览图片"
+                      onClick={() => setPreview(item)}
+                    >
+                      <ImageIcon className="size-3.5" />
+                    </Button>
+                  )}
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label="复制链接"
+                    onClick={() => void onCopy(item.url)}
+                  >
+                    <Copy className="size-3.5" />
+                  </Button>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label="删除"
+                    onClick={() => void onDelete(item)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </li>
+              );
+            })
           ) : (
             <li className="px-3 py-8 text-center text-xs text-muted-foreground">
               暂无文件
@@ -234,6 +286,53 @@ export function Files() {
           )}
         </ul>
       </CardContent>
+
+      <Dialog
+        open={preview !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null);
+        }}
+        title={preview?.original_name}
+        description={
+          preview
+            ? `${formatBytes(preview.size)} · ${formatDateTime(preview.created_at)}`
+            : undefined
+        }
+        size="lg"
+        className="max-w-4xl"
+        footer={
+          preview ? (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void onCopy(preview.url)}
+              >
+                <Copy className="size-3.5" />
+                复制链接
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setPreview(null)}
+              >
+                <X className="size-3.5" />
+                关闭
+              </Button>
+            </>
+          ) : null
+        }
+      >
+        {preview && (
+          <div className="flex items-center justify-center bg-muted/40 rounded-md overflow-hidden">
+            <img
+              src={absoluteUrl(preview.url)}
+              alt={preview.original_name}
+              className="max-h-[70vh] w-auto max-w-full object-contain"
+            />
+          </div>
+        )}
+      </Dialog>
     </Card>
   );
 }
