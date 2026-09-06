@@ -161,12 +161,15 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
         pages={pages}
         activeId={activeId}
         onSelect={(p) => {
-          if (activeId === p.id) {
+          if (activeTopLevel?.id === p.id) {
             setSecondaryOpen((prev) => !prev);
-          } else {
-            setActiveId(p.id);
-            setSecondaryOpen(false);
+            return;
           }
+          if (!p.model_slug) {
+            return;
+          }
+          setActiveId(p.id);
+          setSecondaryOpen(false);
         }}
         onGoToSettings={onGoToSettings}
       />
