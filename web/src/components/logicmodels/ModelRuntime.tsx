@@ -28,6 +28,7 @@ import {
   uploadFile,
 } from "@/lib/api";
 import { absoluteUrl } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type {
   ExpandedRow,
   RowMutationInput,
@@ -63,6 +64,8 @@ export function ModelRuntime({
   } | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
@@ -93,6 +96,8 @@ export function ModelRuntime({
         limit: PAGE_SIZE,
         offset,
         search,
+        sort: sortField ?? undefined,
+        order: sortField ? sortOrder : undefined,
       });
       setRows({
         items: r.rows,
@@ -106,7 +111,7 @@ export function ModelRuntime({
     } finally {
       setLoading(false);
     }
-  }, [schema, slug, offset, search]);
+  }, [schema, slug, offset, search, sortField, sortOrder]);
 
   useEffect(() => {
     void refreshSchema();
@@ -270,19 +275,52 @@ export function ModelRuntime({
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-muted/60 text-xs text-muted-foreground">
             <tr>
-              {visibleFields.map((f) => (
-                <th
-                  key={f.key}
-                  className="border-b px-3 py-2 text-left font-medium"
-                >
-                  <div className="flex items-center gap-1">
-                    <span>{f.label}</span>
-                    <span className="font-mono text-[10px]">
-                      [{f.business_type}]
-                    </span>
-                  </div>
-                </th>
-              ))}
+              {visibleFields.map((f) => {
+                const isSorted = sortField === f.physical;
+                return (
+                  <th
+                    key={f.key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (sortField === f.physical) {
+                        setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                      } else {
+                        setSortField(f.physical);
+                        setSortOrder("desc");
+                      }
+                      setOffset(0);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        (e.currentTarget as HTMLElement).click();
+                      }
+                    }}
+                    className="sticky top-0 z-10 cursor-pointer select-none border-b bg-muted/60 px-3 py-2 text-left font-medium hover:bg-muted"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>{f.label}</span>
+                      <span className="font-mono text-[10px]">
+                        [{f.business_type}]
+                      </span>
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "text-foreground/70 transition-opacity",
+                          isSorted ? "opacity-100" : "opacity-30",
+                        )}
+                      >
+                        {isSorted
+                          ? sortOrder === "asc"
+                            ? "▲"
+                            : "▼"
+                          : "↕"}
+                      </span>
+                    </div>
+                  </th>
+                );
+              })}
               <th className="border-b px-3 py-2 text-right font-medium">操作</th>
             </tr>
           </thead>

@@ -401,8 +401,29 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 	if len(joins) > 0 {
 		joinsClause = " " + strings.Join(joins, " ")
 	}
-	dataQ := fmt.Sprintf("SELECT %s FROM %s%s %s ORDER BY %s.%s DESC LIMIT ? OFFSET ?",
-		strings.Join(selectCols, ", "), quoted, joinsClause, where, quoted, quoteCol(pk))
+
+	sortField := strings.TrimSpace(c.Query("sort"))
+	sortOrder := strings.ToLower(strings.TrimSpace(c.Query("order")))
+	if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder = "desc"
+	}
+	var orderBy string
+	if sortField == "" {
+		orderBy = fmt.Sprintf("ORDER BY %s.%s DESC", quoted, quoteCol(pk))
+	} else {
+		physicalSet := map[string]bool{}
+		for _, f := range root.Fields {
+			physicalSet[f.Physical] = true
+		}
+		if !physicalSet[sortField] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "sort 字段不存在: " + sortField})
+			return
+		}
+		orderBy = fmt.Sprintf("ORDER BY %s.%s %s", quoted, quoteCol(sortField), strings.ToUpper(sortOrder))
+	}
+
+	dataQ := fmt.Sprintf("SELECT %s FROM %s%s %s %s LIMIT ? OFFSET ?",
+		strings.Join(selectCols, ", "), quoted, joinsClause, where, orderBy)
 	args = append(args, limit, offset)
 	dataRows := make([]map[string]any, 0)
 	if err := gdb.Raw(dataQ, args...).Scan(&dataRows).Error; err != nil {

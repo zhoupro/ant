@@ -300,12 +300,20 @@ export function getRuntimeSchema(slug: string): Promise<RuntimeSchema> {
 
 export function listRuntimeRows(
   slug: string,
-  opts: { limit?: number; offset?: number; search?: string } = {},
+  opts: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    sort?: string;
+    order?: "asc" | "desc";
+  } = {},
 ): Promise<RuntimeRowResponse> {
   const params = new URLSearchParams();
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts.offset !== undefined) params.set("offset", String(opts.offset));
   if (opts.search) params.set("search", opts.search);
+  if (opts.sort) params.set("sort", opts.sort);
+  if (opts.order) params.set("order", opts.order);
   const qs = params.toString();
   return request<RuntimeRowResponse>(
     `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows${qs ? `?${qs}` : ""}`,
