@@ -111,14 +111,11 @@ export default function App() {
         active={tab}
         onTabChange={setTab}
         onLogout={handleLogout}
+        hideNav={tab === "home"}
       >
         {tab === "home" ? (
           <HomeView
             onGoToSettings={() => setTab("settings")}
-            onEditPage={(p) => {
-              setEditingPage(p);
-              setTab("pages");
-            }}
           />
         ) : tab === "files" ? (
           <Files />

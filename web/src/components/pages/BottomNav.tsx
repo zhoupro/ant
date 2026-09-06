@@ -1,5 +1,5 @@
 import * as LucideIcons from "lucide-react";
-import { ChevronRight, Home as HomeIcon } from "lucide-react";
+import { Home as HomeIcon, Settings as SettingsIcon } from "lucide-react";
 import { useMemo } from "react";
 
 import { cn } from "@/lib/utils";
@@ -9,9 +9,10 @@ interface BottomNavProps {
   pages: Page[];
   activeId: string | null;
   onSelect: (page: Page) => void;
+  onGoToSettings: () => void;
 }
 
-export function BottomNav({ pages, activeId, onSelect }: BottomNavProps) {
+export function BottomNav({ pages, activeId, onSelect, onGoToSettings }: BottomNavProps) {
   const topLevel = useMemo(
     () => pages.filter((p) => !p.parent_id).sort((a, b) => a.sort - b.sort),
     [pages],
@@ -32,22 +33,33 @@ export function BottomNav({ pages, activeId, onSelect }: BottomNavProps) {
 
   if (topLevel.length === 0) {
     return (
-      <nav className="sticky bottom-0 z-10 border-t border-border/60 bg-background/90 px-4 py-3 backdrop-blur">
-        <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground">
-          <HomeIcon className="size-3" />
-          尚未配置任何页面,请到「页面」标签新建
-        </p>
+      <nav
+        aria-label="页面导航"
+        className="sticky bottom-0 z-10 flex w-full items-center justify-center gap-2 border-t border-border/60 bg-background/90 px-4 py-3 text-[11px] text-muted-foreground backdrop-blur"
+      >
+        <button
+          type="button"
+          onClick={onGoToSettings}
+          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 hover:bg-muted"
+        >
+          <SettingsIcon className="size-3" />
+          前往设置中心
+        </button>
+        <span>尚未配置任何页面</span>
       </nav>
     );
   }
+
+  const pageSlots = Math.min(topLevel.length, 4);
+  const cols = pageSlots + 1;
 
   return (
     <nav
       aria-label="页面导航"
       className="sticky bottom-0 z-10 grid w-full border-t border-border/60 bg-background/95 backdrop-blur"
-      style={{ gridTemplateColumns: `repeat(${Math.min(topLevel.length, 5)}, minmax(0, 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
     >
-      {topLevel.slice(0, 5).map((page) => {
+      {topLevel.slice(0, pageSlots).map((page) => {
         const Icon = renderIcon(page.icon);
         const active = activeId === page.id;
         const children = byParent.get(page.id) ?? [];
@@ -80,8 +92,7 @@ export function BottomNav({ pages, activeId, onSelect }: BottomNavProps) {
                         onClick={() => onSelect(c)}
                         className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left hover:bg-muted"
                       >
-                        <ChevronRight className="size-3" />
-                        {c.label}
+                        <span>{c.label}</span>
                       </button>
                     </li>
                   ))}
@@ -91,6 +102,15 @@ export function BottomNav({ pages, activeId, onSelect }: BottomNavProps) {
           </div>
         );
       })}
+      <button
+        type="button"
+        onClick={onGoToSettings}
+        className="flex flex-col items-center gap-0.5 border-l border-border/40 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="设置中心"
+      >
+        <SettingsIcon className="size-5" />
+        <span>设置</span>
+      </button>
     </nav>
   );
 }

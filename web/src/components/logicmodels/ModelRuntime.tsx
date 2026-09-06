@@ -37,14 +37,21 @@ import type {
 
 interface ModelRuntimeProps {
   slug: string;
-  onBack: () => void;
-  onEdit: () => void;
+  onBack?: () => void;
+  onEdit?: () => void;
   onDeleted: () => void;
+  hideHeader?: boolean;
 }
 
 const PAGE_SIZE = 50;
 
-export function ModelRuntime({ slug, onBack, onEdit, onDeleted }: ModelRuntimeProps) {
+export function ModelRuntime({
+  slug,
+  onBack,
+  onEdit,
+  onDeleted,
+  hideHeader = false,
+}: ModelRuntimeProps) {
   const [schema, setSchema] = useState<RuntimeSchema | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<{
@@ -190,32 +197,38 @@ export function ModelRuntime({ slug, onBack, onEdit, onDeleted }: ModelRuntimePr
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Button size="icon-sm" variant="ghost" onClick={onBack} aria-label="返回">
-            <ArrowLeft className="size-3.5" />
-          </Button>
-          <h2 className="text-base font-medium">{schema.label}</h2>
-          <span className="font-mono text-xs text-muted-foreground">
-            {schema.slug}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            · {total} 行
-          </span>
+      {!hideHeader ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {onBack ? (
+              <Button size="icon-sm" variant="ghost" onClick={onBack} aria-label="返回">
+                <ArrowLeft className="size-3.5" />
+              </Button>
+            ) : null}
+            <h2 className="text-base font-medium">{schema.label}</h2>
+            <span className="font-mono text-xs text-muted-foreground">
+              {schema.slug}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              · {total} 行
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {onEdit ? (
+              <Button size="sm" variant="outline" onClick={onEdit}>
+                <Pencil className="size-3.5" />
+                编辑模型
+              </Button>
+            ) : null}
+            <Button size="sm" variant="ghost" onClick={() => void handleDeleteModel()}>
+              <Trash2 className="size-3.5 text-destructive" />
+              删除模型
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={onEdit}>
-            <Pencil className="size-3.5" />
-            编辑模型
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void handleDeleteModel()}>
-            <Trash2 className="size-3.5 text-destructive" />
-            删除模型
-          </Button>
-        </div>
-      </div>
+      ) : null}
 
-      {schema.description ? (
+      {!hideHeader && schema.description ? (
         <p className="text-xs text-muted-foreground">{schema.description}</p>
       ) : null}
 

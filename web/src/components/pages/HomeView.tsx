@@ -11,10 +11,9 @@ import type { Page } from "@/features/pages/types";
 
 interface HomeViewProps {
   onGoToSettings: () => void;
-  onEditPage: (page: Page) => void;
 }
 
-export function HomeView({ onGoToSettings, onEditPage }: HomeViewProps) {
+export function HomeView({ onGoToSettings }: HomeViewProps) {
   const [pages, setPages] = useState<Page[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,18 +43,20 @@ export function HomeView({ onGoToSettings, onEditPage }: HomeViewProps) {
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
-        <span>{active ? `/${active.slug}` : "首页"}</span>
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          onClick={onGoToSettings}
-          aria-label="进入设置"
-          title="进入设置"
-        >
-          <SettingsIcon className="size-3.5" />
-        </Button>
-      </div>
+      {!active ? (
+        <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
+          <span>首页</span>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            onClick={onGoToSettings}
+            aria-label="进入设置"
+            title="进入设置"
+          >
+            <SettingsIcon className="size-3.5" />
+          </Button>
+        </div>
+      ) : null}
 
       <div className="flex-1 overflow-auto">
         {loading ? (
@@ -83,12 +84,11 @@ export function HomeView({ onGoToSettings, onEditPage }: HomeViewProps) {
           <div className="p-2">
             <ModelRuntime
               slug={active.model_slug}
-              onBack={() => setActiveId(null)}
-              onEdit={() => onEditPage(active)}
               onDeleted={async () => {
                 await refresh();
                 setActiveId(null);
               }}
+              hideHeader
             />
           </div>
         ) : (
@@ -107,6 +107,7 @@ export function HomeView({ onGoToSettings, onEditPage }: HomeViewProps) {
         pages={pages}
         activeId={activeId}
         onSelect={(p) => setActiveId(p.id)}
+        onGoToSettings={onGoToSettings}
       />
     </div>
   );
