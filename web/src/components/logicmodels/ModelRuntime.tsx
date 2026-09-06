@@ -7,7 +7,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -44,7 +43,7 @@ interface ModelRuntimeProps {
   hideHeader?: boolean;
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_DEFAULT = 50;
 
 export function ModelRuntime({
   slug,
@@ -62,11 +61,11 @@ export function ModelRuntime({
     offset: number;
     fields: RuntimeField[];
   } | null>(null);
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<Record<string, string>>({});
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState<number>(PAGE_SIZE_DEFAULT);
   const [loading, setLoading] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
   const [detail, setDetail] = useState<{ pk: string; row: Record<string, unknown> } | null>(null);
@@ -92,12 +91,16 @@ export function ModelRuntime({
     setLoading(true);
     setError(null);
     try {
+      const cleanFilters: Record<string, string> = {};
+      for (const [k, v] of Object.entries(filters)) {
+        if (v.trim()) cleanFilters[k] = v.trim();
+      }
       const r = await listRuntimeRows(slug, {
-        limit: PAGE_SIZE,
+        limit: limit,
         offset,
-        search,
         sort: sortField ?? undefined,
         order: sortField ? sortOrder : undefined,
+        filters: cleanFilters,
       });
       setRows({
         items: r.rows,
@@ -111,7 +114,7 @@ export function ModelRuntime({
     } finally {
       setLoading(false);
     }
-  }, [schema, slug, offset, search, sortField, sortOrder]);
+  }, [schema, slug, offset, sortField, sortOrder, limit, filters]);
 
   useEffect(() => {
     void refreshSchema();
@@ -141,7 +144,7 @@ export function ModelRuntime({
       await deleteRuntimeRow(slug, pk);
       toast.success("已删除");
       if (rows && rows.items.length === 1 && offset > 0) {
-        setOffset(Math.max(0, offset - PAGE_SIZE));
+        setOffset(Math.max(0, offset - limit));
       } else {
         await refreshRows();
       }
@@ -198,7 +201,9 @@ export function ModelRuntime({
   const pkName = rootTable.primary_key;
   const total = rows?.total ?? 0;
   const pageStart = total === 0 ? 0 : (rows?.offset ?? 0) + 1;
-  const pageEnd = Math.min((rows?.offset ?? 0) + PAGE_SIZE, total);
+  const pageEnd = Math.min((rows?.offset ?? 0) + limit, total);
+  const totalPages = total === 0 ? 0 : Math.max(1, Math.ceil(total / limit));
+  const currentPage = total === 0 ? 0 : Math.floor((rows?.offset ?? 0) / limit) + 1;
 
   return (
     <div className="space-y-3">
@@ -239,21 +244,18 @@ export function ModelRuntime({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setOffset(0);
-                  setSearch(searchInput.trim());
-                }
+          {Object.values(filters).some((v) => v) ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setFilters({});
+                setOffset(0);
               }}
-              placeholder="搜索…"
-              className="h-7 w-44 pl-7"
-            />
-          </div>
+            >
+              清空筛选
+            </Button>
+          ) : null}
           <Button size="sm" variant="outline" onClick={() => void refreshRows()}>
             <RefreshCw className="size-3.5" />
             刷新
@@ -322,6 +324,75 @@ export function ModelRuntime({
                 );
               })}
               <th className="border-b px-3 py-2 text-right font-medium">操作</th>
+            </tr>
+            <tr>
+              {visibleFields.map((f) => (
+                <th
+                  key={`f-${f.key}`}
+                  className="border-b bg-muted/60 px-2 py-1.5 font-normal"
+                >
+                  {f.business_type === "boolean" ? (
+                    <select
+                      value={filters[f.physical] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFilters((prev) => {
+                          const next = { ...prev };
+                          if (v) next[f.physical] = v;
+                          else delete next[f.physical];
+                          return next;
+                        });
+                        setOffset(0);
+                      }}
+                      className="h-6 w-full rounded border bg-background px-1 text-[10px]"
+                    >
+                      <option value="">全部</option>
+                      <option value="true">是</option>
+                      <option value="false">否</option>
+                    </select>
+                  ) : f.business_type === "date" ||
+                    f.business_type === "datetime" ? (
+                    <Input
+                      type={f.business_type === "date" ? "date" : "datetime-local"}
+                      value={filters[f.physical] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFilters((prev) => {
+                          const next = { ...prev };
+                          if (v) next[f.physical] = v;
+                          else delete next[f.physical];
+                          return next;
+                        });
+                        setOffset(0);
+                      }}
+                      className="h-6 w-full px-1 text-[10px]"
+                    />
+                  ) : (
+                    <Input
+                      type={
+                        f.business_type === "number" ||
+                        f.business_type === "integer"
+                          ? "number"
+                          : "text"
+                      }
+                      placeholder="筛选"
+                      value={filters[f.physical] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFilters((prev) => {
+                          const next = { ...prev };
+                          if (v) next[f.physical] = v;
+                          else delete next[f.physical];
+                          return next;
+                        });
+                        setOffset(0);
+                      }}
+                      className="h-6 w-full px-1.5 text-[10px]"
+                    />
+                  )}
+                </th>
+              ))}
+              <th className="border-b bg-muted/60" />
             </tr>
           </thead>
           <tbody>
@@ -394,24 +465,45 @@ export function ModelRuntime({
         </table>
       </div>
 
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <div>
-          {total === 0 ? "0 行" : `${pageStart} - ${pageEnd} / 共 ${total} 行`}
+          {total === 0
+            ? "共 0 行"
+            : `${pageStart} - ${pageEnd} / 共 ${total} 行`}
         </div>
         <div className="inline-flex items-center gap-1">
+          <select
+            value={String(limit)}
+            onChange={(e) => {
+              setLimit(Number(e.target.value));
+              setOffset(0);
+            }}
+            className="h-7 rounded-md border bg-transparent px-2 text-xs"
+            aria-label="每页条数"
+          >
+            {[10, 20, 50, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}/页
+              </option>
+            ))}
+          </select>
+          <span className="mx-1 text-[10px]">
+            第 {currentPage} / {totalPages} 页
+          </span>
           <Button
             size="icon-sm"
             variant="outline"
             disabled={(rows?.offset ?? 0) === 0}
-            onClick={() => setOffset(Math.max(0, (rows?.offset ?? 0) - PAGE_SIZE))}
+            onClick={() => setOffset(Math.max(0, (rows?.offset ?? 0) - limit))}
+            aria-label="上一页"
           >
             <ChevronLeft className="size-3.5" />
           </Button>
           <Button
             size="icon-sm"
             variant="outline"
-            disabled={(rows?.offset ?? 0) + PAGE_SIZE >= total}
-            onClick={() => setOffset((rows?.offset ?? 0) + PAGE_SIZE)}
+            disabled={(rows?.offset ?? 0) + limit >= total}
+            onClick={() => setOffset((rows?.offset ?? 0) + limit)}
           >
             <ChevronRight className="size-3.5" />
           </Button>

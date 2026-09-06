@@ -306,6 +306,7 @@ export function listRuntimeRows(
     search?: string;
     sort?: string;
     order?: "asc" | "desc";
+    filters?: Record<string, string>;
   } = {},
 ): Promise<RuntimeRowResponse> {
   const params = new URLSearchParams();
@@ -314,6 +315,11 @@ export function listRuntimeRows(
   if (opts.search) params.set("search", opts.search);
   if (opts.sort) params.set("sort", opts.sort);
   if (opts.order) params.set("order", opts.order);
+  if (opts.filters) {
+    for (const [k, v] of Object.entries(opts.filters)) {
+      if (v) params.set(`filter[${k}]`, v);
+    }
+  }
   const qs = params.toString();
   return request<RuntimeRowResponse>(
     `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows${qs ? `?${qs}` : ""}`,

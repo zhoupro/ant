@@ -373,21 +373,35 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 
 	where := ""
 	args := []any{}
-	if search != "" {
-		parts := []string{}
-		for _, f := range root.Fields {
-			if !f.Searchable {
-				continue
-			}
-			if !physicalColSet[f.Physical] {
-				continue
-			}
-			parts = append(parts, fmt.Sprintf("CAST(%s AS TEXT) LIKE ?", quoteCol(f.Physical)))
-			args = append(args, "%"+search+"%")
+	// Per-column filters via `filter[<col>]=<value>`. Empty values are skipped.
+	// Text-like columns use LIKE; numeric / date / boolean use exact match.
+	colType := make(map[string]string)
+	for _, f := range root.Fields {
+		colType[f.Physical] = f.BusinessType
+	}
+	filterParts := []string{}
+	for col, vals := range c.Request.URL.Query() {
+		const prefix = "filter["
+		if !strings.HasPrefix(col, prefix) || !strings.HasSuffix(col, "]") {
+			continue
 		}
-		if len(parts) > 0 {
-			where = "WHERE " + strings.Join(parts, " OR ")
+		colName := strings.TrimSuffix(strings.TrimPrefix(col, prefix), "]")
+		if len(vals) == 0 || vals[0] == "" || !physicalColSet[colName] {
+			continue
 		}
+		val := vals[0]
+		bt := strings.ToLower(colType[colName])
+		switch {
+		case strings.Contains(bt, "int") || strings.Contains(bt, "number") || strings.Contains(bt, "decimal") || strings.Contains(bt, "real") || strings.Contains(bt, "double") || strings.Contains(bt, "numeric"):
+			filterParts = append(filterParts, fmt.Sprintf("CAST(%s AS TEXT) = ?", quoteCol(colName)))
+			args = append(args, val)
+		default:
+			filterParts = append(filterParts, fmt.Sprintf("CAST(%s AS TEXT) LIKE ?", quoteCol(colName)))
+			args = append(args, "%"+val+"%")
+		}
+	}
+	if len(filterParts) > 0 {
+		where = "WHERE " + strings.Join(filterParts, " AND ")
 	}
 
 	var total int64

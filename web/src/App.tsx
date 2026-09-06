@@ -43,11 +43,7 @@ export default function App() {
   const checkAuth = useCallback(async () => {
     try {
       const user = await me();
-      if (user.must_change_password) {
-        setView({ kind: "change-password", user });
-      } else {
-        setView({ kind: "home", user });
-      }
+      setView({ kind: "home", user });
     } catch {
       setView({ kind: "login" });
     }
@@ -76,12 +72,8 @@ export default function App() {
         <LoginForm
           onSubmit={async (input) => {
             const user = await login(input);
-            if (user.must_change_password) {
-              setView({ kind: "change-password", user });
-            } else {
-              setView({ kind: "home", user });
-              toast.success(`欢迎回来，${user.username}`);
-            }
+            setView({ kind: "home", user });
+            toast.success(`欢迎回来，${user.username}`);
           }}
         />
         <Toaster position="top-center" richColors />
