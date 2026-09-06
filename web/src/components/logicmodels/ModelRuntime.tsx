@@ -75,6 +75,7 @@ export function ModelRuntime({
   } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState<{ pk: string; row: Record<string, unknown> } | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const refreshSchema = useCallback(async () => {
     setError(null);
@@ -244,6 +245,16 @@ export function ModelRuntime({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
+          {(() => {
+            const active = Object.values(filters).filter((v) => v.trim()).length;
+            const sortActive = sortField ? 1 : 0;
+            const total = active + sortActive;
+            return total > 0 ? (
+              <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] text-foreground/80">
+                已选 {total} 个{active > 0 && sortActive > 0 ? " (含排序)" : ""}
+              </span>
+            ) : null;
+          })()}
           {Object.values(filters).some((v) => v) ? (
             <Button
               size="sm"
@@ -428,7 +439,11 @@ export function ModelRuntime({
                         key={f.key}
                         className="max-w-[260px] truncate border-b px-3 py-1.5 align-top text-xs"
                       >
-                        <CellValue value={r[f.physical]} field={f} />
+                        <CellValue
+                          value={r[f.physical]}
+                          field={f}
+                          onPreviewImage={setPreviewImage}
+                        />
                       </td>
                     ))}
                     <td className="border-b px-3 py-1.5 text-right">
@@ -560,6 +575,11 @@ export function ModelRuntime({
           setDetailData(null);
         }}
       />
+
+      <ImagePreviewDialog
+        src={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
     </div>
   );
 }
@@ -567,21 +587,23 @@ export function ModelRuntime({
 interface CellValueProps {
   value: unknown;
   field: RuntimeField;
+  onPreviewImage?: (src: string) => void;
 }
 
-function CellValue({ value, field }: CellValueProps) {
+function CellValue({ value, field, onPreviewImage }: CellValueProps) {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground">—</span>;
   }
   switch (field.business_type) {
     case "image":
       return (
-        <a
-          href={absoluteUrl(String(value))}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          type="button"
           className="block"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPreviewImage?.(String(value));
+          }}
         >
           <img
             src={absoluteUrl(String(value))}
@@ -589,7 +611,7 @@ function CellValue({ value, field }: CellValueProps) {
             className="h-10 w-10 rounded border object-cover"
             loading="lazy"
           />
-        </a>
+        </button>
       );
     case "file":
       return (
@@ -645,55 +667,72 @@ function RowDetailDialog({
   onEditFromDetail,
 }: RowDetailDialogProps) {
   const rootTable = schema.tables.find((t) => t.alias === schema.root_alias);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   if (!rootTable) return null;
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="记录详情"
-      description={schema.label}
-      size="lg"
-      footer={
-        <>
-          <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
-            关闭
-          </Button>
-          <Button type="button" onClick={onEditFromDetail} disabled={!data}>
-            <Pencil className="size-3.5" />
-            编辑
-          </Button>
-        </>
-      }
-    >
-      {loading || !data ? (
-        <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">
-          {loading ? <Loader2 className="size-4 animate-spin" /> : "加载中…"}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {rootTable.fields.map((f) => (
-              <DetailField key={f.key} field={f} value={data.row[f.physical]} />
-            ))}
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title="记录详情"
+        description={schema.label}
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
+              关闭
+            </Button>
+            <Button type="button" onClick={onEditFromDetail} disabled={!data}>
+              <Pencil className="size-3.5" />
+              编辑
+            </Button>
+          </>
+        }
+      >
+        {loading || !data ? (
+          <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">
+            {loading ? <Loader2 className="size-4 animate-spin" /> : "加载中…"}
           </div>
-          {data.relations.length > 0 ? (
-            <>
-              <Separator />
-              <div className="space-y-3">
-                <div className="text-xs text-muted-foreground">关联数据</div>
-                {data.relations.map((rel) => (
-                  <RelationBlock key={rel.id} relation={rel} />
-                ))}
-              </div>
-            </>
-          ) : null}
-        </div>
-      )}
-    </Dialog>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {rootTable.fields.map((f) => (
+                <DetailField
+                  key={f.key}
+                  field={f}
+                  value={data.row[f.physical]}
+                  onPreview={setPreviewImage}
+                />
+              ))}
+            </div>
+            {data.relations.length > 0 ? (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <div className="text-xs text-muted-foreground">关联数据</div>
+                  {data.relations.map((rel) => (
+                    <RelationBlock key={rel.id} relation={rel} />
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+      </Dialog>
+      <ImagePreviewDialog src={previewImage} onClose={() => setPreviewImage(null)} />
+    </>
   );
 }
 
-function DetailField({ field, value }: { field: RuntimeField; value: unknown }) {
+function DetailField({
+  field,
+  value,
+  onPreview,
+}: {
+  field: RuntimeField;
+  value: unknown;
+  onPreview?: (src: string) => void;
+}) {
   return (
     <div className="space-y-1 rounded-md border bg-muted/20 p-2">
       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
@@ -702,7 +741,11 @@ function DetailField({ field, value }: { field: RuntimeField; value: unknown }) 
       </div>
       <div className="break-words text-sm">
         {field.business_type === "image" || field.business_type === "file" ? (
-          <DetailMedia value={value} type={field.business_type} />
+          <DetailMedia
+            value={value}
+            type={field.business_type}
+            onPreview={onPreview}
+          />
         ) : (
           <DetailValue value={value} />
         )}
@@ -725,24 +768,71 @@ function DetailValue({ value }: { value: unknown }) {
   return <span>{String(value)}</span>;
 }
 
+interface ImagePreviewDialogProps {
+  src: string | null;
+  onClose: () => void;
+}
+
+function ImagePreviewDialog({ src, onClose }: ImagePreviewDialogProps) {
+  useEffect(() => {
+    if (!src) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [src, onClose]);
+  if (!src) return null;
+  const url = absoluteUrl(src);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
+      <img
+        src={url}
+        alt=""
+        className="max-h-full max-w-full rounded object-contain shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1 text-xs text-white hover:bg-white/20"
+      >
+        关闭
+      </button>
+    </div>
+  );
+}
+
 function DetailMedia({
   value,
   type,
+  onPreview,
 }: {
   value: unknown;
   type: "image" | "file";
+  onPreview?: (src: string) => void;
 }) {
   if (!value) return <span className="text-muted-foreground">—</span>;
   const url = String(value);
   if (type === "image") {
     return (
-      <a href={absoluteUrl(url)} target="_blank" rel="noreferrer">
+      <button
+        type="button"
+        onClick={() => onPreview?.(url)}
+        className="block"
+      >
         <img
           src={absoluteUrl(url)}
           alt=""
           className="max-h-32 rounded border bg-muted"
+          loading="lazy"
         />
-      </a>
+      </button>
     );
   }
   return (
@@ -827,6 +917,7 @@ function RowFormDialog({
   const [m2m, setM2m] = useState<Record<string, number[]>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -932,6 +1023,7 @@ function RowFormDialog({
                       // keep raw draft, will throw on submit
                     }
                   }}
+                  onPreview={setPreviewImage}
                 />
               ))}
           </div>
@@ -941,6 +1033,11 @@ function RowFormDialog({
       {error ? (
         <p className="mt-2 text-xs text-destructive">{error}</p>
       ) : null}
+
+      <ImagePreviewDialog
+        src={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
     </Dialog>
   );
 }
@@ -951,9 +1048,17 @@ interface FieldInputProps {
   jsonDraft?: string;
   onChange: (v: string) => void;
   onJsonDraftChange: (v: string) => void;
+  onPreview?: (src: string) => void;
 }
 
-function FieldInput({ field, value, jsonDraft, onChange, onJsonDraftChange }: FieldInputProps) {
+function FieldInput({
+  field,
+  value,
+  jsonDraft,
+  onChange,
+  onJsonDraftChange,
+  onPreview,
+}: FieldInputProps) {
   const common = (
     <label className="flex items-center gap-1 text-xs text-muted-foreground">
       <span>{field.label}</span>
@@ -1057,7 +1162,12 @@ function FieldInput({ field, value, jsonDraft, onChange, onJsonDraftChange }: Fi
       return (
         <div className="space-y-1 sm:col-span-2">
           {common}
-          <UploadField field={field} value={value} onChange={onChange} />
+          <UploadField
+            field={field}
+            value={value}
+            onChange={onChange}
+            onPreview={onPreview}
+          />
         </div>
       );
     case "images":
@@ -1136,9 +1246,10 @@ interface UploadFieldProps {
   field: RuntimeField;
   value: string;
   onChange: (v: string) => void;
+  onPreview?: (src: string) => void;
 }
 
-function UploadField({ value, onChange }: UploadFieldProps) {
+function UploadField({ value, onChange, onPreview }: UploadFieldProps) {
   const [uploading, setUploading] = useState(false);
   return (
     <div className="space-y-1">
@@ -1184,11 +1295,17 @@ function UploadField({ value, onChange }: UploadFieldProps) {
         ) : null}
       </div>
       {value ? (
-        <img
-          src={absoluteUrl(value)}
-          alt=""
-          className="max-h-32 rounded border bg-muted"
-        />
+        <button
+          type="button"
+          onClick={() => onPreview?.(value)}
+          className="block"
+        >
+          <img
+            src={absoluteUrl(value)}
+            alt=""
+            className="max-h-32 rounded border bg-muted"
+          />
+        </button>
       ) : null}
     </div>
   );

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gorm.io/driver/sqlite"
@@ -113,9 +114,44 @@ func (m *Manager) swap(db *gorm.DB, path string) {
 }
 
 func openSQLite(path string) (*gorm.DB, error) {
-	return gorm.Open(sqlite.Open(path), &gorm.Config{
+	// If the file already exists but is read-only, fix the permission so
+	// SQLite can open it in rwc mode. This handles the common case where
+	// somebody chmod'd the data file to 444 (or copied it from a ro
+	// mount) and every subsequent write returned "readonly database".
+	if info, statErr := os.Stat(path); statErr == nil && info.Mode().Perm()&0o200 == 0 {
+		if chmodErr := os.Chmod(path, 0o644); chmodErr != nil {
+			return nil, fmt.Errorf(
+				"无法设置 %s 为可写: %w (父目录可能只读或文件被锁定)",
+				path, chmodErr,
+			)
+		}
+	}
+
+	// Build a DSN with the right pragmas. Use the explicit `file:` prefix
+	// so we can append a query string without worrying about a path that
+	// happens to contain `?`.
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
+
+	gdb, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
+	if err != nil {
+		return nil, err
+	}
+	// Force a checkpoint after every write so a SIGKILL never leaves the
+	// configured database half-updated on disk. The PRAGMA runs in the
+	// same connection as the originating write, so the WAL has already
+	// been flushed to the main DB file by the time we return.
+	gdb.Callback().Create().After("gorm:after_create").Register("mc:wal_checkpoint", func(tx *gorm.DB) {
+		_ = tx.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
+	})
+	gdb.Callback().Update().After("gorm:after_update").Register("mc:wal_checkpoint", func(tx *gorm.DB) {
+		_ = tx.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
+	})
+	gdb.Callback().Delete().After("gorm:after_delete").Register("mc:wal_checkpoint", func(tx *gorm.DB) {
+		_ = tx.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
+	})
+	return gdb, nil
 }
 
 func listTablesLocked(gdb *gorm.DB) ([]string, error) {
@@ -147,6 +183,26 @@ type ForeignKey struct {
 	OnUpdate string `gorm:"column:on_update"`
 	OnDelete string `gorm:"column:on_delete"`
 	Match    string `gorm:"column:match"`
+}
+
+// ExplainDBError turns cryptic SQLite errors into actionable hints for the
+// UI. Anything we don't recognise passes through unchanged.
+func ExplainDBError(err error) (string, string) {
+	if err == nil {
+		return "", ""
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "readonly"):
+		return "数据库为只读,无法写入", "managed.db 文件被设成 444,或其所在目录被设成 555/挂载为只读文件系统。检查文件权限并重试。"
+	case strings.Contains(msg, "no such table"):
+		return "数据表不存在", "可能是模型刚刚被删除,或 GORM 还未完成迁移。"
+	case strings.Contains(msg, "UNIQUE constraint failed"):
+		return "违反唯一约束", "该字段在已有数据中已存在重复值。"
+	case strings.Contains(msg, "FOREIGN KEY constraint failed"):
+		return "违反外键约束", "该记录被其他表引用,需要先删除或解除引用。"
+	}
+	return msg, ""
 }
 
 func ListForeignKeys(gdb *gorm.DB, table string) ([]ForeignKey, error) {

@@ -66,22 +66,20 @@ func updateSettings(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "上传根目录不能为空"})
 			return
 		}
-		abs, err := filepath.Abs(value)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "路径不合法: " + err.Error()})
+		if !filepath.IsAbs(value) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "路径必须是绝对路径,如 /var/data/uploads"})
 			return
 		}
-		if err := os.MkdirAll(abs, 0o755); err != nil {
+		if err := os.MkdirAll(value, 0o755); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "无法创建目录: " + err.Error()})
 			return
 		}
-		if err := os.WriteFile(filepath.Join(abs, ".mc-upload-write-test"), []byte("ok"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(value, ".mc-upload-write-test"), []byte("ok"), 0o644); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "目录不可写: " + err.Error()})
 			return
 		} else {
-			_ = os.Remove(filepath.Join(abs, ".mc-upload-write-test"))
+			_ = os.Remove(filepath.Join(value, ".mc-upload-write-test"))
 		}
-		value = abs
 	case settings.KeyManagedDBPath:
 		if deps.Manager == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库管理器未初始化"})
@@ -100,6 +98,13 @@ func updateSettings(c *gin.Context) {
 			}
 			value = ""
 		} else {
+			if !filepath.IsAbs(value) {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":  "数据库路径必须是绝对路径,如 /var/data/managed.db",
+					"reason": "相对路径会因 CWD 不同而解析到不同位置,造成重启数据丢失",
+				})
+				return
+			}
 			abs, err := filepath.Abs(value)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "路径不合法: " + err.Error()})
@@ -111,6 +116,17 @@ func updateSettings(c *gin.Context) {
 					return
 				}
 			}
+			// Verify the path is actually writable so we don't store a
+			// configuration that will only fail later with a cryptic
+			// "readonly database" error.
+			if err := os.WriteFile(abs+".mc-write-test", []byte("ok"), 0o644); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":  "目录不可写: " + err.Error(),
+					"reason": "managed.db 所在目录或文件被设为只读,SQLite 无法写入",
+				})
+				return
+			}
+			_ = os.Remove(abs + ".mc-write-test")
 			if err := deps.Manager.Load(abs); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "加载数据库失败: " + err.Error()})
 				return

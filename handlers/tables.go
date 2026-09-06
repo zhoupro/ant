@@ -488,7 +488,12 @@ func (h *TablesHandler) create(c *gin.Context) {
 	quoted, _ := quoteIdent(in.Name)
 	stmt := fmt.Sprintf("CREATE TABLE %s (\n  %s\n)", quoted, strings.Join(parts, ",\n  "))
 	if err := gdb.Exec(stmt).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		msg, hint := datadb.ExplainDBError(err)
+		body := gin.H{"error": msg}
+		if hint != "" {
+			body["reason"] = hint
+		}
+		c.JSON(http.StatusBadRequest, body)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"name": in.Name, "sql": stmt}})
