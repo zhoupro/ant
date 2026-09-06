@@ -1,5 +1,7 @@
 import type {
+  APIToken,
   ChangePasswordInput,
+  CreatedAPIToken,
   LoginInput,
   User,
 } from "@/features/auth/types";
@@ -68,6 +70,27 @@ export function changePassword(input: ChangePasswordInput): Promise<User> {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function listAPITokens(): Promise<APIToken[]> {
+  return request<APIToken[]>(`${AUTH_BASE}/tokens`);
+}
+
+export function createAPIToken(input: {
+  name?: string;
+  expires_in_days?: number;
+}): Promise<CreatedAPIToken> {
+  return request<CreatedAPIToken>(`${AUTH_BASE}/tokens`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function revokeAPIToken(id: number): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `${AUTH_BASE}/tokens/${encodeURIComponent(String(id))}`,
+    { method: "DELETE" },
+  );
 }
 
 export interface Attachment {

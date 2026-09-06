@@ -33,3 +33,15 @@ type Setting struct {
 	Value     string    `gorm:"type:text;not null" json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type APIToken struct {
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	UserID      uint       `gorm:"index;not null" json:"user_id"`
+	Name        string     `gorm:"size:64;not null" json:"name"`
+	Prefix      string     `gorm:"size:16;not null" json:"prefix"`
+	TokenHash   string     `gorm:"size:64;uniqueIndex;not null" json:"-"`
+	ExpiresAt   *time.Time `gorm:"index" json:"expires_at,omitempty"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	RevokedAt   *time.Time `gorm:"index" json:"revoked_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}

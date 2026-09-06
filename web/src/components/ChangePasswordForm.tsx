@@ -29,11 +29,15 @@ export function ChangePasswordForm({
   onSubmit,
 }: ChangePasswordFormProps) {
   const [oldPassword, setOldPassword] = useState("");
+  const [newUsername, setNewUsername] = useState(username);
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const trimmedName = newUsername.trim();
+  const nameInvalid =
+    trimmedName.length > 0 && (trimmedName.length < 2 || trimmedName.length > 64);
   const mismatch = confirm.length > 0 && newPassword !== confirm;
   const tooShort = newPassword.length > 0 && newPassword.length < 6;
   const sameAsOld =
@@ -43,6 +47,8 @@ export function ChangePasswordForm({
   const canSubmit =
     !submitting &&
     oldPassword.length > 0 &&
+    trimmedName.length >= 2 &&
+    trimmedName.length <= 64 &&
     newPassword.length >= 6 &&
     !mismatch &&
     !sameAsOld;
@@ -53,7 +59,14 @@ export function ChangePasswordForm({
     setError(null);
     setSubmitting(true);
     try {
-      await onSubmit({ old_password: oldPassword, new_password: newPassword });
+      const payload: ChangePasswordInput = {
+        old_password: oldPassword,
+        new_password: newPassword,
+      };
+      if (trimmedName !== username) {
+        payload.new_username = trimmedName;
+      }
+      await onSubmit(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "修改失败");
       setSubmitting(false);
@@ -76,6 +89,29 @@ export function ChangePasswordForm({
           <CardContent className="space-y-3">
             <div className="space-y-1.5">
               <label
+                htmlFor="cp-username"
+                className="text-xs text-muted-foreground"
+              >
+                用户名
+              </label>
+              <Input
+                id="cp-username"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder={username}
+                aria-invalid={nameInvalid}
+                autoComplete="username"
+                required
+                {...noSuggestProps}
+              />
+              {nameInvalid ? (
+                <p className="text-xs text-destructive">
+                  用户名长度需在 2~64 之间
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <label
                 htmlFor="cp-old"
                 className="text-xs text-muted-foreground"
               >
@@ -87,7 +123,6 @@ export function ChangePasswordForm({
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 autoComplete="current-password"
-                autoFocus
                 required
                 {...noSuggestProps}
               />

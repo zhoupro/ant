@@ -112,7 +112,14 @@ export default function App() {
         ) : tab === "files" ? (
           <Files />
         ) : tab === "settings" ? (
-          <Settings />
+          <Settings
+            username={view.user.username}
+            onUsernameChanged={(next) =>
+              setView((prev) =>
+                prev.kind === "home" ? { kind: "home", user: { ...prev.user, username: next } } : prev,
+              )
+            }
+          />
         ) : tab === "models" ? (
           <ModelsList
             onGoToDB={() => setTab("db")}

@@ -76,6 +76,12 @@ func openAPISpec() gin.H {
 					"name":        "mc_session",
 					"description": "Session cookie set by /api/auth/login.",
 				},
+				"bearerAuth": gin.H{
+					"type":         "http",
+					"scheme":       "bearer",
+					"bearerFormat": "opaque",
+					"description":  "API token issued by /api/auth/tokens. Send as `Authorization: Bearer <token>`.",
+				},
 			},
 			"schemas": schemas(),
 		},
@@ -92,6 +98,9 @@ func schemas() gin.H {
 		"User":                 userSchema(),
 		"Attachment":           attachmentSchema(),
 		"Setting":              settingSchema(),
+		"APIToken":             apiTokenSchema(),
+		"CreateAPITokenInput":  createAPITokenInputSchema(),
+		"CreatedAPIToken":      createdAPITokenEnvelopeSchema(),
 		"DBStatus":             dbStatusSchema(),
 		"DBColumn":             dbColumnSchema(),
 		"TableSchema":          tableSchemaSchema(),
@@ -178,6 +187,43 @@ func settingSchema() gin.H {
 			"value":      gin.H{"type": "string"},
 			"updated_at": gin.H{"type": "string", "format": "date-time"},
 		},
+	}
+}
+
+func apiTokenSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"id":           gin.H{"type": "integer"},
+			"user_id":      gin.H{"type": "integer"},
+			"name":         gin.H{"type": "string"},
+			"prefix":       gin.H{"type": "string", "description": "First 12 chars of the plaintext token; safe to display."},
+			"expires_at":   gin.H{"type": "string", "format": "date-time"},
+			"last_used_at": gin.H{"type": "string", "format": "date-time"},
+			"revoked_at":   gin.H{"type": "string", "format": "date-time"},
+			"created_at":   gin.H{"type": "string", "format": "date-time"},
+		},
+	}
+}
+
+func createAPITokenInputSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"name":             gin.H{"type": "string", "description": "Display name. Optional; defaults to '未命名令牌'."},
+			"expires_in_days": gin.H{"type": "integer", "description": "Optional. Lifetime in days (1~3650). 0 means no expiry."},
+		},
+	}
+}
+
+func createdAPITokenEnvelopeSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"token": gin.H{"$ref": "#/components/schemas/APIToken"},
+			"plain": gin.H{"type": "string", "description": "Plaintext token. Shown only once at creation. Send as `Authorization: Bearer <plain>`."},
+		},
+		"required": []string{"token", "plain"},
 	}
 }
 
@@ -568,16 +614,34 @@ func addAuthPaths(p gin.H) {
 		"get": op("auth", "Current user", "Return the currently authenticated user.", nil, []gin.H{okResp("The current user."), errResp()}),
 	}
 	p["/api/auth/change-password"] = gin.H{
-		"post": op("auth", "Change password", "Change the current user's password.", []gin.H{
+		"post": op("auth", "Change password", "Change the current user's password and optionally update the username.", []gin.H{
 			{"name": "body", "in": "body", "required": true, "schema": gin.H{
 				"type": "object",
 				"properties": gin.H{
 					"old_password": gin.H{"type": "string"},
 					"new_password": gin.H{"type": "string"},
+					"new_username": gin.H{"type": "string", "description": "Optional. 2~64 chars; must be unique."},
 				},
 				"required": []string{"old_password", "new_password"},
 			}},
 		}, []gin.H{okResp("The updated user."), errResp()}),
+	}
+	apiTokenListResp := gin.H{"code": "200", "desc": "List of API tokens owned by the current user.", "schema": gin.H{
+		"type": "array",
+		"items": gin.H{"$ref": "#/components/schemas/APIToken"},
+	}}
+	p["/api/auth/tokens"] = gin.H{
+		"get": op("auth", "List API tokens", "List API tokens owned by the current user. Plaintexts are never returned.", nil, []gin.H{apiTokenListResp, errResp()}),
+		"post": op("auth", "Create API token", "Issue a new API token. The plaintext is returned only in this response and cannot be retrieved later. Use it as `Authorization: Bearer <plain>`.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/CreateAPITokenInput"}},
+		}, []gin.H{
+			{"code": "200", "desc": "Created token with one-time plaintext.", "schema": gin.H{"$ref": "#/components/schemas/CreatedAPIToken"}},
+			errResp(),
+		}),
+	}
+	p["/api/auth/tokens/{id}"] = gin.H{
+		"parameters": []gin.H{{"name": "id", "in": "path", "required": true, "type": "integer"}},
+		"delete": op("auth", "Revoke API token", "Revoke an API token by id. The token can no longer be used for authentication.", nil, []gin.H{okResp("Revocation result."), errResp()}),
 	}
 }
 

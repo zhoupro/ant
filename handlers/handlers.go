@@ -40,6 +40,10 @@ func Register(r *gin.Engine, deps Deps) {
 		api.GET("/auth/me", authRequired, me)
 		api.POST("/auth/change-password", authRequired, changePassword)
 
+		api.GET("/auth/tokens", authRequired, listAPITokens)
+		api.POST("/auth/tokens", authRequired, createAPIToken)
+		api.DELETE("/auth/tokens/:id", authRequired, revokeAPIToken)
+
 		api.POST("/uploads", authRequired, WithUploadDeps(upload, uploadDeps))
 		api.GET("/uploads", authRequired, WithUploadDeps(listUploads, uploadDeps))
 		api.DELETE("/uploads/:id", authRequired, WithUploadDeps(deleteUpload, uploadDeps))
