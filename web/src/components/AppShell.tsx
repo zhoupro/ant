@@ -38,7 +38,7 @@ export function AppShell({
           <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="text-sm font-semibold tracking-tight">
-                MC Notes
+                蚍蜉
               </span>
               <span className="hidden text-xs text-muted-foreground sm:inline">
                 · {username}

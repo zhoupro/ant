@@ -50,7 +50,7 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
           <div className="flex size-11 items-center justify-center rounded-full bg-muted">
             <StickyNote className="size-5 text-foreground/70" />
           </div>
-          <CardTitle className="text-lg">登录 MC Notes</CardTitle>
+          <CardTitle className="text-lg">登录 蚍蜉</CardTitle>
           <CardDescription>使用账号密码继续</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
