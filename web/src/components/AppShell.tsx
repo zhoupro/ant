@@ -3,7 +3,14 @@ import { BookOpen, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type HomeTab = "home" | "files" | "db" | "models" | "pages" | "settings";
+export type HomeTab =
+  | "home"
+  | "files"
+  | "db"
+  | "models"
+  | "pages"
+  | "api"
+  | "settings";
 
 interface AppShellProps {
   username: string;
@@ -20,6 +27,7 @@ const tabs: { key: HomeTab; label: string }[] = [
   { key: "db", label: "数据库" },
   { key: "models", label: "逻辑模型" },
   { key: "pages", label: "页面" },
+  { key: "api", label: "API" },
   { key: "settings", label: "设置" },
 ];
 
@@ -70,22 +78,24 @@ export function AppShell({
               </Button>
             </div>
           </div>
-          <nav className="mx-auto flex max-w-3xl gap-1 px-2 pb-2">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => onTabChange(t.key)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  active === t.key
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
+          <nav className="mx-auto max-w-3xl overflow-x-auto px-2 pb-2">
+            <div className="flex w-max gap-1">
+              {tabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => onTabChange(t.key)}
+                  className={cn(
+                    "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    active === t.key
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </nav>
         </header>
       ) : null}

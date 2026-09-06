@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AppShell, type HomeTab } from "@/components/AppShell";
+import { APITokens } from "@/components/APITokens";
 import { Files } from "@/components/Files";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
@@ -145,6 +146,8 @@ export default function App() {
               />
             </CardContent>
           </Card>
+        ) : tab === "api" ? (
+          <APITokens />
         ) : (
           <Dashboard
             onGoToSettings={() => setTab("settings")}
