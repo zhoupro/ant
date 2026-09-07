@@ -24,32 +24,56 @@
 
 环境：Go 1.25+、Node.js 20+、macOS/Linux。
 
+### 一键本地开发循环
+
 ```bash
-# 一键构建并启动（自动 npm install + vite build + go build + 启动）
+# 自动 npm install + vite build + go build + 启动(把二进制嵌入前端)
 ./restart.sh 8080
 
-# 仅重建后端（跳过前端构建）
+# 仅重建后端,假设 web/dist 已构建过
 SKIP_WEB_BUILD=1 ./restart.sh 8080
 
 # 停止
 ./stop.sh
 ```
 
-启动后访问 `http://localhost:8080/`，默认账号 `test` / `test123`，首次登录会被强制要求修改密码。
-
-也可以单独启动后端：
+### 打包成单二进制
 
 ```bash
-./start.sh                    # 启动已编译的 bin/mc
-go run . -port 8080           # 直接 go run
+./build.sh                          # 当前 OS/ARCH -> dist/mc
+./build.sh linux amd64              # 交叉编译到 Linux x86_64
+./build.sh darwin arm64             # Apple Silicon
+./build.sh windows amd64            # Windows .exe
+./build.sh all                      # 一次产出 5 个平台
+
+SKIP_FRONTEND=1 ./build.sh linux amd64   # 跳过 npm,假定 web/dist 已就绪
 ```
 
-前端开发模式（热更新，访问 `http://localhost:5173`）：
+产物 `dist/mc-<os>-<arch>[.exe]` 是单一自包含二进制:把前端 embed 进 Go 二进制,
+没有外部资源。运行时会在当前目录创建 `data/`、`logs/`(由启动脚本) 等目录,
+默认数据库 `data/app.db`、上传根目录 `data/uploads`、受管库 `data/managed.db`。
+可通过 `-db` / `-upload-root` / `-managed-db` 改路径,传绝对路径。
+
+部署到目标机器后:
+
+```bash
+./mc-linux-amd64 -host 0.0.0.0 -port 8080
+```
+
+启动后访问 `http://localhost:8080/`,默认账号 `test` / `test123`,首次登录会被强制要求修改密码。
+
+也可以单独启动后端(仅开发用,不打包前端):
+
+```bash
+go run . -port 8080
+```
+
+前端开发模式(热更新,访问 `http://localhost:5173`):
 
 ```bash
 cd web
 npm install
-npm run dev                   # /api 代理到 http://127.0.0.1:8080
+npm run dev                         # /api 代理到 http://127.0.0.1:8080
 ```
 
 ## 技术栈
@@ -65,6 +89,7 @@ npm run dev                   # /api 代理到 http://127.0.0.1:8080
 ```
 .
 ├── main.go                       # 入口：装配 Gin 路由、初始化设置 + 受管 DB
+├── web_assets.go                 //go:embed web/dist 前端 + 路由装配
 ├── handlers/                     # HTTP 处理器
 │   ├── auth.go                   # 登录 / 登出 / 修改密码
 │   ├── pages.go                  # 页面配置 CRUD

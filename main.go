@@ -20,20 +20,24 @@ func main() {
 	port := flag.String("port", envOr("PORT", "8080"), "listen port")
 	host := flag.String("host", envOr("HOST", "0.0.0.0"), "listen host")
 	dbPath := flag.String("db", envOr("DB_PATH", "data/app.db"), "sqlite db path")
-	staticDir := flag.String("static", envOr("STATIC_DIR", "static"), "static dir")
 	uploadRoot := flag.String("upload-root", envOr("UPLOAD_ROOT", "data/uploads"), "upload root directory")
 	managedDBPath := flag.String("managed-db", envOr("MANAGED_DB_PATH", "data/managed.db"), "default path for the managed sqlite database (overridden by setting center)")
-	resetPassword := flag.String("reset-default-user", "", "reset default user 'test' to this password (also forces change on next login), then exit")
+	resetPassword := flag.String("reset-default-user", "", "reset first admin's password and force a change on next login, then exit")
 	flag.Parse()
 
 	abs, _ := filepath.Abs(*dbPath)
+	if dir := filepath.Dir(abs); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Fatalf("failed to create db dir %s: %v", dir, err)
+		}
+	}
 	db.Init(abs)
 
 	if *resetPassword != "" {
 		if err := db.ResetDefaultAdmin(*resetPassword); err != nil {
 			log.Fatalf("reset failed: %v", err)
 		}
-		log.Printf("default admin 'test' password has been reset; login will require password change")
+		log.Printf("default admin password has been reset; login will require password change")
 		return
 	}
 
@@ -48,6 +52,11 @@ func main() {
 	absManagedDB, err := filepath.Abs(*managedDBPath)
 	if err != nil {
 		log.Fatalf("invalid managed db path: %v", err)
+	}
+	if dir := filepath.Dir(absManagedDB); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Fatalf("failed to create managed db dir %s: %v", dir, err)
+		}
 	}
 
 	store := settings.New()
@@ -70,24 +79,14 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery(), gin.Logger())
 
-	r.Static("/css", filepath.Join(*staticDir, "css"))
-	r.Static("/js", filepath.Join(*staticDir, "js"))
-	r.Static("/assets", filepath.Join(*staticDir, "assets"))
-	r.StaticFile("/favicon.svg", filepath.Join(*staticDir, "favicon.svg"))
-	indexPath := filepath.Join(*staticDir, "index.html")
+	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
 	r.GET("/swagger", handlers.SwaggerUI)
 	r.GET("/swagger/", handlers.SwaggerUI)
 	r.GET("/swagger/index.html", handlers.SwaggerUI)
 	r.GET("/swagger/doc.json", handlers.SwaggerJSON)
-	r.StaticFile("/", indexPath)
-	r.NoRoute(func(c *gin.Context) {
-		if len(c.Request.URL.Path) >= 5 && c.Request.URL.Path[:5] == "/api/" {
-			c.JSON(404, gin.H{"error": "not found"})
-			return
-		}
-		c.File(indexPath)
-	})
-	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
+	setupFrontendAssets(r)
 
 	handlers.Register(r, handlers.Deps{Store: store, Manager: mgr, LMStore: lmStore, PagesStore: pagesStore})
 

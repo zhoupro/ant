@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# 在源码目录里构建并启动。产物是单一 Go 二进制,前端已经被嵌入。
+# 长期运行请用 ./build.sh 把二进制拷走,部署到目标机器直接 ./bin/mc 启动。
+
 set -euo pipefail
 
 PORT="${1:-${PORT:-8080}}"
@@ -9,11 +12,10 @@ PID_FILE="$APP_DIR/data/${APP_NAME}.pid"
 LOG_FILE="$APP_DIR/logs/${APP_NAME}.log"
 BIN="$APP_DIR/bin/${APP_NAME}"
 WEB_DIR="$APP_DIR/web"
-STATIC_DIR="${STATIC_DIR:-$APP_DIR/static}"
 SKIP_WEB_BUILD="${SKIP_WEB_BUILD:-0}"
 
 cd "$APP_DIR"
-mkdir -p data logs bin "$STATIC_DIR"
+mkdir -p data logs bin
 
 stop_existing() {
   if [[ -f "$PID_FILE" ]]; then
@@ -50,14 +52,11 @@ build_web() {
     echo "[web] no $WEB_DIR, skip"
     return
   fi
-  echo "[web] build -> $STATIC_DIR"
+  echo "[web] build (Vite -> $WEB_DIR/dist, embedded into the Go binary)"
   if [[ ! -d "$WEB_DIR/node_modules" ]]; then
     (cd "$WEB_DIR" && npm install --no-audit --no-fund --silent)
   fi
   (cd "$WEB_DIR" && npm run build --silent)
-  rm -rf "$STATIC_DIR"/*
-  cp -R "$WEB_DIR/dist/." "$STATIC_DIR"/
-  echo "[web] copied $(ls "$STATIC_DIR" | wc -l | tr -d ' ') entries to $STATIC_DIR"
 }
 
 build() {
@@ -67,7 +66,7 @@ build() {
 
 start() {
   echo "[start] host=$HOST port=$PORT log=$LOG_FILE"
-  HOST="$HOST" PORT="$PORT" STATIC_DIR="$STATIC_DIR" nohup "$BIN" -host "$HOST" -port "$PORT" >>"$LOG_FILE" 2>&1 &
+  HOST="$HOST" PORT="$PORT" nohup "$BIN" -host "$HOST" -port "$PORT" >>"$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
   sleep 0.6
   if kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
