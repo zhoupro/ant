@@ -22,6 +22,7 @@ import { PagesList } from "@/components/pages/PagesList";
 import { HomeView } from "@/components/pages/HomeView";
 import { UsersManagement } from "@/components/users/UsersManagement";
 import { RolesManagement } from "@/components/users/RolesManagement";
+import { Logs } from "@/components/Logs";
 import {
   changePassword,
   login,
@@ -116,7 +117,8 @@ export default function App() {
   const canModels = hasPermission(view.user, "view_models");
   const canPages = hasPermission(view.user, "view_pages");
   const canApi = hasPermission(view.user, "view_api_tokens");
-  const canCron = hasPermission(view.user, "view_cron_jobs");
+const canCron = hasPermission(view.user, "view_cron_jobs");
+  const canLogs = hasPermission(view.user, "view_logs");
   const canSettings = hasPermission(view.user, "view_settings");
   const canUsers = hasPermission(view.user, "manage_users");
   const canRoles = hasPermission(view.user, "manage_roles");
@@ -170,8 +172,10 @@ export default function App() {
           </Card>
         ) : tab === "api" && canApi ? (
           <APITokens />
-        ) : tab === "cron" && canCron ? (
+) : tab === "cron" && canCron ? (
           <CronJobs user={view.user} />
+        ) : tab === "logs" && canLogs ? (
+          <Logs user={view.user} />
         ) : tab === "users" && canUsers ? (
           <UsersManagement currentUser={view.user} />
         ) : tab === "roles" && canRoles ? (

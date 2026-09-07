@@ -43,6 +43,8 @@ func Init(dbPath string) {
 		&models.APIToken{},
 		&models.CronJob{},
 		&models.CronJobRun{},
+		&models.Log{},
+		&models.LogImage{},
 	); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}

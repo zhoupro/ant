@@ -44,6 +44,7 @@ export const TAB_PERMISSIONS: TabPermissionSpec[] = [
   { key: "pages", label: "页面", permission: "view_pages" },
   { key: "cron", label: "定时任务", permission: "view_cron_jobs" },
   { key: "api", label: "API", permission: "view_api_tokens" },
+  { key: "logs", label: "日志", permission: "view_logs" },
   { key: "settings", label: "设置", permission: "view_settings" },
   { key: "users", label: "用户", permission: "manage_users" },
   { key: "roles", label: "角色", permission: "manage_roles" },

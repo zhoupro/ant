@@ -14,7 +14,8 @@ const (
 	PermViewPages     PermissionCode = "view_pages"
 	PermViewAPITokens PermissionCode = "view_api_tokens"
 	PermViewSettings  PermissionCode = "view_settings"
-	PermViewCronJobs  PermissionCode = "view_cron_jobs"
+PermViewCronJobs  PermissionCode = "view_cron_jobs"
+	PermViewLogs      PermissionCode = "view_logs"
 
 	// 管理类权限 —— 隐含查看权限,允许在功能页内写入
 	PermManageUploads  PermissionCode = "manage_uploads"
@@ -22,7 +23,8 @@ const (
 	PermManageModels   PermissionCode = "manage_models"
 	PermManagePages    PermissionCode = "manage_pages"
 	PermManageSettings PermissionCode = "manage_settings"
-	PermManageCronJobs PermissionCode = "manage_cron_jobs"
+PermManageCronJobs PermissionCode = "manage_cron_jobs"
+	PermManageLogs     PermissionCode = "manage_logs"
 
 	// 平台管理 —— 仅超级管理员默认拥有
 	PermManageUsers PermissionCode = "manage_users"
@@ -44,14 +46,16 @@ var AllPermissions = []struct {
 	{PermViewPages, "查看页面配置", "查看底部导航与页面配置", "view"},
 	{PermViewAPITokens, "查看 API 令牌", "查看 API 令牌列表", "view"},
 	{PermViewSettings, "查看设置", "查看设置中心", "view"},
-	{PermViewCronJobs, "查看定时任务", "查看定时任务及其运行历史与日志", "view"},
+{PermViewCronJobs, "查看定时任务", "查看定时任务及其运行历史与日志", "view"},
+	{PermViewLogs, "查看日志", "查看系统日志列表与详情", "view"},
 
 	{PermManageUploads, "上传/删除文件", "上传新文件、删除已有文件", "manage"},
 	{PermManageDatabase, "管理数据库", "新建/删除表,增删列,增删改查数据", "manage"},
 	{PermManageModels, "管理逻辑模型", "新建/编辑/删除逻辑模型", "manage"},
 	{PermManagePages, "管理页面", "新建/编辑/删除页面与底部导航", "manage"},
 	{PermManageSettings, "修改设置", "修改上传目录、受管数据库路径等系统设置", "manage"},
-	{PermManageCronJobs, "管理定时任务", "新建/编辑/启用/停用/手动触发定时任务", "manage"},
+{PermManageCronJobs, "管理定时任务", "新建/编辑/启用/停用/手动触发定时任务", "manage"},
+	{PermManageLogs, "管理日志", "新建 / 删除日志条目,清空日志", "manage"},
 
 	{PermManageUsers, "管理用户", "新建/编辑/删除管理员与普通用户", "admin"},
 	{PermManageRoles, "管理角色", "新建/编辑/删除角色并分配权限", "admin"},

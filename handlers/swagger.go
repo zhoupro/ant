@@ -67,7 +67,8 @@ func openAPISpec() gin.H {
 			{"name": "database"},
 			{"name": "logic-models"},
 			{"name": "runtime"},
-			{"name": "cron"},
+{"name": "cron"},
+			{"name": "logs"},
 		},
 		"components": gin.H{
 			"securitySchemes": gin.H{
@@ -126,13 +127,18 @@ func schemas() gin.H {
 		"RuntimeRowResponse":   runtimeRowResponseSchema(),
 		"RuntimeDetail":        runtimeDetailSchema(),
 		"ExpandedRow":          expandedRowSchema(),
-		"CronJob":              cronJobSchema(),
+"CronJob":              cronJobSchema(),
 		"CronJobInput":         cronJobInputSchema(),
 		"CronJobToggle":        cronJobToggleSchema(),
 		"CronJobRun":           cronJobRunSchema(),
 		"CronJobRunList":       cronJobRunListSchema(),
 		"CronJobRunTrigger":    cronJobRunTriggerSchema(),
 		"CronJobLogSlice":      cronJobLogSliceSchema(),
+		"Log":                  logSchema(),
+		"LogImage":             logImageSchema(),
+		"LogListResponse":      logListResponseSchema(),
+		"LogInput":             logInputSchema(),
+		"LogFacets":            logFacetsSchema(),
 	}
 }
 
@@ -707,7 +713,8 @@ func buildPaths() gin.H {
 	addTablesPaths(p)
 	addLogicModelsPaths(p)
 	addRuntimePaths(p)
-	addCronPaths(p)
+addCronPaths(p)
+	addLogsPaths(p)
 	return p
 }
 
@@ -1122,3 +1129,110 @@ func errResp() gin.H {
 
 var _ = strings.Builder{}
 var _ = http.StatusOK
+
+func logSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"id":          gin.H{"type": "integer"},
+			"level":       gin.H{"type": "string", "enum": []string{"debug", "info", "warn", "error"}},
+			"source":      gin.H{"type": "string", "description": "Origin of the log entry (manual, http, auth, system, ...)."},
+			"title":       gin.H{"type": "string"},
+			"message":     gin.H{"type": "string"},
+			"user_id":     gin.H{"type": "integer", "nullable": true},
+			"user_kind":   gin.H{"type": "string", "enum": []string{"admin", "regular"}},
+			"username":    gin.H{"type": "string"},
+			"method":      gin.H{"type": "string"},
+			"path":        gin.H{"type": "string"},
+			"status_code": gin.H{"type": "integer", "nullable": true},
+			"ip":          gin.H{"type": "string"},
+			"user_agent":  gin.H{"type": "string"},
+			"duration_ms": gin.H{"type": "integer", "nullable": true},
+			"metadata":    gin.H{"type": "object", "additionalProperties": true, "nullable": true},
+			"images":      gin.H{"type": "array", "items": gin.H{"$ref": "#/components/schemas/LogImage"}},
+			"created_at":  gin.H{"type": "string", "format": "date-time"},
+		},
+	}
+}
+
+func logImageSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"id":            gin.H{"type": "integer"},
+			"original_name": gin.H{"type": "string"},
+			"size":          gin.H{"type": "integer"},
+			"content_type":  gin.H{"type": "string"},
+			"url":           gin.H{"type": "string"},
+			"created_at":    gin.H{"type": "string", "format": "date-time"},
+		},
+	}
+}
+
+func logInputSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"level":     gin.H{"type": "string", "enum": []string{"debug", "info", "warn", "error"}, "default": "info"},
+			"source":    gin.H{"type": "string", "description": "Optional. Defaults to 'manual'."},
+			"title":     gin.H{"type": "string", "maxLength": 255},
+			"message":   gin.H{"type": "string"},
+			"metadata":  gin.H{"type": "object", "additionalProperties": true, "nullable": true},
+			"image_ids": gin.H{"type": "array", "items": gin.H{"type": "integer"}, "description": "Attachment IDs (images) to attach to the log entry."},
+		},
+		"required": []string{"title"},
+	}
+}
+
+func logFacetsSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"levels":  gin.H{"type": "array", "items": gin.H{"type": "string"}},
+			"sources": gin.H{"type": "array", "items": gin.H{"type": "string"}},
+		},
+	}
+}
+
+func logListResponseSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"items":   gin.H{"type": "array", "items": gin.H{"$ref": "#/components/schemas/Log"}},
+			"total":   gin.H{"type": "integer"},
+			"limit":   gin.H{"type": "integer"},
+			"offset":  gin.H{"type": "integer"},
+			"levels":  gin.H{"type": "array", "items": gin.H{"type": "string"}},
+			"sources": gin.H{"type": "array", "items": gin.H{"type": "string"}},
+		},
+	}
+}
+
+func addLogsPaths(p gin.H) {
+	p["/api/logs"] = gin.H{
+		"parameters": []gin.H{
+			{"name": "level", "in": "query", "type": "string", "description": "Filter by level (debug/info/warn/error)."},
+			{"name": "source", "in": "query", "type": "string"},
+			{"name": "search", "in": "query", "type": "string", "description": "LIKE search across title and message."},
+			{"name": "limit", "in": "query", "type": "integer", "default": 50, "maximum": 200},
+			{"name": "offset", "in": "query", "type": "integer", "default": 0},
+			{"name": "order", "in": "query", "type": "string", "enum": []string{"asc", "desc"}, "default": "desc"},
+		},
+		"get": op("logs", "List logs", "List log entries. Newest first. Returns the items plus filter facets.", nil, []gin.H{
+			okResp("Log list with facets."),
+			errResp(),
+		}),
+		"post": op("logs", "Create log entry", "Create a new log entry manually. Useful for capturing screenshots or annotations.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/LogInput"}},
+		}, []gin.H{okResp("The created log entry."), errResp()}),
+		"delete": op("logs", "Clear all logs", "Delete every log entry and their image bindings.", nil, []gin.H{okResp("Clear result."), errResp()}),
+	}
+	p["/api/logs/facets"] = gin.H{
+		"get": op("logs", "Log facets", "Available levels and known sources for the filter dropdowns.", nil, []gin.H{okResp("Facets."), errResp()}),
+	}
+	p["/api/logs/{id}"] = gin.H{
+		"parameters": []gin.H{{"name": "id", "in": "path", "required": true, "type": "integer"}},
+		"get": op("logs", "Get log entry", "Fetch a single log entry with attached images.", nil, []gin.H{okResp("Log entry."), errResp()}),
+		"delete": op("logs", "Delete log entry", "Delete one log entry and its image bindings.", nil, []gin.H{okResp("Deletion result."), errResp()}),
+	}
+}

@@ -19,6 +19,8 @@
 - **用户与角色**：超级管理员与普通用户分表管理；角色绑定功能权限；按角色决定可见的 Tab 与可执行的操作。
 - **设置中心**：上传根目录 / 受管 SQLite 路径热更新；修改密码；Swagger UI 跳转。
   ![设置中心](docs/screenshots/settings.png)
+- **日志模块（外部写入）**：面向外部系统暴露 `POST /api/logs`（Bearer Token 或 Session Cookie），调用方主动推送日志；Web UI 在线检索、过滤、分页、附带截图预览。**不会**自动记录本服务自身请求。
+  ![日志管理](docs/screenshots/logs.png)
 
 ## 快速开始
 
@@ -116,6 +118,7 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 │   │   │   ├── ChangePasswordForm.tsx
 │   │   │   ├── Settings.tsx      # 设置中心
 │   │   │   ├── Files.tsx         # 文件上传管理
+│   │   │   ├── Logs.tsx          # 日志模块（在线查看 / 新建 / 过滤）
 │   │   │   ├── pages/
 │   │   │   │   ├── HomeView.tsx       # 首页（一级 + 二级菜单、运行时）
 │   │   │   │   ├── BottomNav.tsx      # 一级菜单
@@ -171,6 +174,122 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 | `/api/models/*` | 逻辑模型 CRUD + 自动生成（`/auto`、`/business-types`、`/tables`、`/tables/:name/schema`） |
 | `/api/runtime/:slug/*` | 逻辑模型自动生成的运行时 CRUD + schema |
 | `/api/pages*` | 页面配置 CRUD + 可用图标列表 |
+| `/api/logs*` | 日志查询 / 新建 / 删除 / 清空 + 级别 / 来源 / 关键字过滤 + 图片附件 |
+
+### 日志服务（外部系统接入）
+
+本服务的日志模块**只接受外部主动写入**，不会自动记录本服务的请求日志。调用方通过
+`POST /api/logs` 把日志推上来，登录后的用户在 Web 端统一查看、检索、删除。
+
+#### 鉴权
+
+外部脚本/服务推荐使用 **API Token**（`Authorization: Bearer <token>`）而不是 Session Cookie。
+在「API」页签创建一个令牌，授予对应用户 `manage_logs` 权限。同一令牌之后可以直接复用，
+适合 CI、定时任务、其它内部服务推送。
+
+也可以用账号密码先登录拿到 Cookie：
+
+```bash
+curl -c /tmp/cookies.txt -H 'Content-Type: application/json' \
+  -d '{"username":"<user>","password":"<pwd>"}' \
+  http://<host>:8080/api/auth/login
+```
+
+#### 写入一条日志
+
+```bash
+curl -X POST -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "订单同步失败",
+    "message": "上游 502,本服务已重试 3 次",
+    "level": "error",
+    "source": "order-sync",
+    "metadata": { "order_id": "O-2026-0001", "attempt": 3 }
+  }' \
+  http://<host>:8080/api/logs
+```
+
+支持字段：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `title` | 是 | 简短标题，≤255 字 |
+| `level` | 否 | `debug` / `info` / `warn` / `error`，默认 `info` |
+| `source` | 否 | 来源标识（如服务名），默认 `manual` |
+| `message` | 否 | 详细描述，支持多行 |
+| `metadata` | 否 | 任意 JSON 对象，原样落库 |
+| `image_ids` | 否 | 已上传附件的 ID 列表（见下方） |
+
+#### 附带截图
+
+先把图片通过现有附件接口上传，再把返回的 `id` 放进 `image_ids`：
+
+```bash
+# 1. 上传图片,返回 { "data": { "id": 42, "url": "/uploads/42", ... } }
+curl -X POST -H 'Authorization: Bearer <token>' \
+  -F "file=@/tmp/screenshot.png" \
+  http://<host>:8080/api/uploads
+
+# 2. 把图片 ID 写入日志
+curl -X POST -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "前端白屏",
+    "level": "warn",
+    "source": "frontend",
+    "image_ids": [42]
+  }' \
+  http://<host>:8080/api/logs
+```
+
+#### 查询日志
+
+```bash
+# 列出最近 20 条 error 级别日志
+curl -H 'Authorization: Bearer <token>' \
+  'http://<host>:8080/api/logs?level=error&limit=20'
+
+# 关键字搜索(title / message LIKE)
+curl -H 'Authorization: Bearer <token>' \
+  --data-urlencode 'search=订单同步' \
+  'http://<host>:8080/api/logs'
+```
+
+支持参数：`level`、`source`、`search`、`limit`（≤200，默认 50）、`offset`、`order`（asc/desc）。
+返回结构里 `items[].images` 直接带 `url`，前端/脚本可以直接拿来渲染。
+
+#### Python / Node 示例
+
+```python
+import requests
+API = "http://<host>:8080/api"
+TOKEN = "<token>"
+requests.post(f"{API}/logs", headers={"Authorization": f"Bearer {TOKEN}"}, json={
+    "title": "夜间任务崩溃", "level": "error", "source": "cron",
+    "message": "OOM at step 3", "metadata": {"host": "node-7"},
+})
+```
+
+```js
+await fetch("http://<host>:8080/api/logs", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    title: "Nightly job crashed",
+    level: "error",
+    source: "cron",
+    message: "OOM at step 3",
+  }),
+});
+```
+
+> 默认**不会**把本服务自身的请求当成"日志"写进来 —— 那样会把审计噪音和外部业务日志
+搅在一起。如确有诉求（例如想在反代前面埋点），自行在 `main.go` 把
+`handlers.HTTPRequestLogMiddleware()` 挂上即可。
 
 ## 常用命令
 

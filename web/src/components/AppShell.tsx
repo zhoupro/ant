@@ -14,6 +14,7 @@ export type HomeTab =
   | "pages"
   | "cron"
   | "api"
+  | "logs"
   | "settings"
   | "users"
   | "roles";
