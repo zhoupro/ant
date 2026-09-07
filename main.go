@@ -30,10 +30,10 @@ func main() {
 	db.Init(abs)
 
 	if *resetPassword != "" {
-		if err := db.ResetDefaultUser(*resetPassword); err != nil {
+		if err := db.ResetDefaultAdmin(*resetPassword); err != nil {
 			log.Fatalf("reset failed: %v", err)
 		}
-		log.Printf("default user 'test' password has been reset; login will require password change")
+		log.Printf("default admin 'test' password has been reset; login will require password change")
 		return
 	}
 

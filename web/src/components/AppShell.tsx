@@ -1,6 +1,9 @@
 import { BookOpen, LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { hasPermission } from "@/lib/api";
+import { TAB_PERMISSIONS } from "@/features/permissions/catalog";
+import type { AuthUser } from "@/features/auth/types";
 import { cn } from "@/lib/utils";
 
 export type HomeTab =
@@ -10,10 +13,12 @@ export type HomeTab =
   | "models"
   | "pages"
   | "api"
-  | "settings";
+  | "settings"
+  | "users"
+  | "roles";
 
 interface AppShellProps {
-  username: string;
+  user: AuthUser;
   active: HomeTab;
   onTabChange: (tab: HomeTab) => void;
   onLogout: () => void;
@@ -21,24 +26,17 @@ interface AppShellProps {
   hideNav?: boolean;
 }
 
-const tabs: { key: HomeTab; label: string }[] = [
-  { key: "home", label: "首页" },
-  { key: "files", label: "文件" },
-  { key: "db", label: "数据库" },
-  { key: "models", label: "逻辑模型" },
-  { key: "pages", label: "页面" },
-  { key: "api", label: "API" },
-  { key: "settings", label: "设置" },
-];
-
 export function AppShell({
-  username,
+  user,
   active,
   onTabChange,
   onLogout,
   children,
   hideNav = false,
 }: AppShellProps) {
+  const visibleTabs = TAB_PERMISSIONS.filter((t) =>
+    hasPermission(user, t.permission),
+  );
   return (
     <div className="min-h-svh bg-background">
       {!hideNav ? (
@@ -49,7 +47,16 @@ export function AppShell({
                 蚍蜉
               </span>
               <span className="hidden text-xs text-muted-foreground sm:inline">
-                · {username}
+                · {user.username}
+                {user.user_kind === "regular" ? (
+                  <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                    普通用户
+                  </span>
+                ) : user.is_super_admin ? (
+                  <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    超级管理员
+                  </span>
+                ) : null}
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -80,11 +87,11 @@ export function AppShell({
           </div>
           <nav className="mx-auto max-w-3xl overflow-x-auto px-2 pb-2">
             <div className="flex w-max gap-1">
-              {tabs.map((t) => (
+              {visibleTabs.map((t) => (
                 <button
                   key={t.key}
                   type="button"
-                  onClick={() => onTabChange(t.key)}
+                  onClick={() => onTabChange(t.key as HomeTab)}
                   className={cn(
                     "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                     active === t.key

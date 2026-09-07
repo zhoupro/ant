@@ -26,13 +26,13 @@ type createAPITokenInput struct {
 }
 
 func listAPITokens(c *gin.Context) {
-	user := currentUser(c)
-	if user == nil {
+	p := currentPrincipal(c)
+	if p == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
 		return
 	}
 	var rows []models.APIToken
-	if err := db.DB.Where("user_id = ?", user.ID).Order("id desc").Find(&rows).Error; err != nil {
+	if err := db.DB.Where("user_id = ? AND user_kind = ?", p.user.ID, p.user.UserKind).Order("id desc").Find(&rows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -44,8 +44,8 @@ func listAPITokens(c *gin.Context) {
 }
 
 func createAPIToken(c *gin.Context) {
-	user := currentUser(c)
-	if user == nil {
+	p := currentPrincipal(c)
+	if p == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
 		return
 	}
@@ -82,11 +82,12 @@ func createAPIToken(c *gin.Context) {
 	}
 
 	tok := models.APIToken{
-		UserID:    user.ID,
-		Name:      name,
-		Prefix:    prefix,
+		UserID:   p.user.ID,
+		UserKind: p.user.UserKind,
+		Name:     name,
+		Prefix:   prefix,
 		TokenHash: hash,
-		Plain:     raw,
+		Plain:    raw,
 	}
 	if in.ExpiresIn > 0 {
 		exp := time.Now().Add(time.Duration(in.ExpiresIn) * 24 * time.Hour)
@@ -105,14 +106,14 @@ func createAPIToken(c *gin.Context) {
 }
 
 func revealAPIToken(c *gin.Context) {
-	user := currentUser(c)
-	if user == nil {
+	p := currentPrincipal(c)
+	if p == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
 		return
 	}
 	id := c.Param("id")
 	var tok models.APIToken
-	if err := db.DB.Where("id = ? AND user_id = ?", id, user.ID).First(&tok).Error; err != nil {
+	if err := db.DB.Where("id = ? AND user_id = ? AND user_kind = ?", id, p.user.ID, p.user.UserKind).First(&tok).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "令牌不存在"})
 		return
 	}
@@ -130,14 +131,14 @@ func revealAPIToken(c *gin.Context) {
 }
 
 func revokeAPIToken(c *gin.Context) {
-	user := currentUser(c)
-	if user == nil {
+	p := currentPrincipal(c)
+	if p == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
 		return
 	}
 	id := c.Param("id")
 	var tok models.APIToken
-	if err := db.DB.Where("id = ? AND user_id = ?", id, user.ID).First(&tok).Error; err != nil {
+	if err := db.DB.Where("id = ? AND user_id = ? AND user_kind = ?", id, p.user.ID, p.user.UserKind).First(&tok).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "令牌不存在"})
 		return
 	}
@@ -156,14 +157,15 @@ func revokeAPIToken(c *gin.Context) {
 
 func apiTokenPayloadFrom(t *models.APIToken) gin.H {
 	return gin.H{
-		"id":          t.ID,
-		"user_id":     t.UserID,
-		"name":        t.Name,
-		"prefix":      t.Prefix,
-		"expires_at":  t.ExpiresAt,
+		"id":           t.ID,
+		"user_id":      t.UserID,
+		"user_kind":    t.UserKind,
+		"name":         t.Name,
+		"prefix":       t.Prefix,
+		"expires_at":   t.ExpiresAt,
 		"last_used_at": t.LastUsedAt,
-		"revoked_at":  t.RevokedAt,
-		"created_at":  t.CreatedAt,
+		"revoked_at":   t.RevokedAt,
+		"created_at":   t.CreatedAt,
 	}
 }
 

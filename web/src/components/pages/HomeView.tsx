@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { listPages } from "@/lib/api";
@@ -30,8 +29,9 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
         if (prev && list.some((p) => p.id === prev)) return prev;
         return list.find((p) => !p.parent_id)?.id ?? null;
       });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "加载页面失败");
+    } catch {
+      // 无权限或后端错误时,降级到空列表,不打扰用户。
+      setPages([]);
     } finally {
       setLoading(false);
     }

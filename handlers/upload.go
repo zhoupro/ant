@@ -38,7 +38,7 @@ func upload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传服务未初始化"})
 		return
 	}
-	user := currentUser(c)
+	p := currentPrincipal(c)
 
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize)
 	if err := c.Request.ParseMultipartForm(maxUploadSize); err != nil {
@@ -117,7 +117,8 @@ func upload(c *gin.Context) {
 
 	rel := filepath.ToSlash(filepath.Join(sub, stored))
 	att := models.Attachment{
-		UserID:       user.ID,
+		UserID:       p.user.ID,
+		UserKind:     p.user.UserKind,
 		OriginalName: safeName,
 		StoredName:   rel,
 		Size:         written,
@@ -133,9 +134,9 @@ func upload(c *gin.Context) {
 }
 
 func listUploads(c *gin.Context) {
-	user := currentUser(c)
+	p := currentPrincipal(c)
 	var rows []models.Attachment
-	if err := db.DB.Where("user_id = ?", user.ID).Order("id desc").Find(&rows).Error; err != nil {
+	if err := db.DB.Where("user_id = ? AND user_kind = ?", p.user.ID, p.user.UserKind).Order("id desc").Find(&rows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -148,10 +149,10 @@ func listUploads(c *gin.Context) {
 
 func deleteUpload(c *gin.Context) {
 	deps := uploadDepsFrom(c)
-	user := currentUser(c)
+	p := currentPrincipal(c)
 	id := c.Param("id")
 	var att models.Attachment
-	if err := db.DB.Where("id = ? AND user_id = ?", id, user.ID).First(&att).Error; err != nil {
+	if err := db.DB.Where("id = ? AND user_id = ? AND user_kind = ?", id, p.user.ID, p.user.UserKind).First(&att).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "附件不存在"})
 			return
@@ -208,6 +209,7 @@ func attachmentPayload(a models.Attachment) gin.H {
 	return gin.H{
 		"id":            a.ID,
 		"user_id":       a.UserID,
+		"user_kind":     a.UserKind,
 		"original_name": a.OriginalName,
 		"size":          a.Size,
 		"content_type":  a.ContentType,

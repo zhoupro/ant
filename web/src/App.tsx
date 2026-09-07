@@ -19,20 +19,30 @@ import { Dashboard } from "@/components/db/Dashboard";
 import { ModelsList } from "@/components/logicmodels/ModelsList";
 import { PagesList } from "@/components/pages/PagesList";
 import { HomeView } from "@/components/pages/HomeView";
+import { UsersManagement } from "@/components/users/UsersManagement";
+import { RolesManagement } from "@/components/users/RolesManagement";
 import {
   changePassword,
   login,
   logout as apiLogout,
   me,
 } from "@/lib/api";
-import type { User } from "@/features/auth/types";
+import { hasPermission } from "@/lib/api";
+import type { AuthUser } from "@/features/auth/types";
 import type { Page } from "@/features/pages/types";
+import { TAB_PERMISSIONS } from "@/features/permissions/catalog";
 
 type View =
   | { kind: "loading" }
   | { kind: "login" }
-  | { kind: "change-password"; user: User }
-  | { kind: "home"; user: User };
+  | { kind: "change-password"; user: AuthUser }
+  | { kind: "home"; user: AuthUser };
+
+function firstVisibleTab(user: AuthUser): HomeTab {
+  const fallback = (TAB_PERMISSIONS.find((t) => hasPermission(user, t.permission))?.key ??
+    "home") as HomeTab;
+  return fallback;
+}
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -45,6 +55,7 @@ export default function App() {
     try {
       const user = await me();
       setView({ kind: "home", user });
+      setTab(firstVisibleTab(user));
     } catch {
       setView({ kind: "login" });
     }
@@ -74,6 +85,7 @@ export default function App() {
           onSubmit={async (input) => {
             const user = await login(input);
             setView({ kind: "home", user });
+            setTab(firstVisibleTab(user));
             toast.success(`欢迎回来，${user.username}`);
           }}
         />
@@ -89,6 +101,7 @@ export default function App() {
           onSubmit={async (input) => {
             const user = await changePassword(input);
             setView({ kind: "home", user });
+            setTab(firstVisibleTab(user));
             toast.success("密码已更新");
           }}
         />
@@ -97,22 +110,29 @@ export default function App() {
     );
   }
 
+  const canFiles = hasPermission(view.user, "view_files");
+  const canDb = hasPermission(view.user, "view_database");
+  const canModels = hasPermission(view.user, "view_models");
+  const canPages = hasPermission(view.user, "view_pages");
+  const canApi = hasPermission(view.user, "view_api_tokens");
+  const canSettings = hasPermission(view.user, "view_settings");
+  const canUsers = hasPermission(view.user, "manage_users");
+  const canRoles = hasPermission(view.user, "manage_roles");
+
   return (
     <>
       <AppShell
-        username={view.user.username}
+        user={view.user}
         active={tab}
         onTabChange={setTab}
         onLogout={handleLogout}
         hideNav={tab === "home"}
       >
         {tab === "home" ? (
-          <HomeView
-            onGoToSettings={() => setTab("settings")}
-          />
-        ) : tab === "files" ? (
+          <HomeView onGoToSettings={() => setTab("settings")} />
+        ) : tab === "files" && canFiles ? (
           <Files />
-        ) : tab === "settings" ? (
+        ) : tab === "settings" && canSettings ? (
           <Settings
             username={view.user.username}
             onUsernameChanged={(next) =>
@@ -121,13 +141,13 @@ export default function App() {
               )
             }
           />
-        ) : tab === "models" ? (
+        ) : tab === "models" && canModels ? (
           <ModelsList
             onGoToDB={() => setTab("db")}
             initialSlug={pendingModelSlug}
             onInitialSlugConsumed={() => setPendingModelSlug(null)}
           />
-        ) : tab === "pages" ? (
+        ) : tab === "pages" && canPages ? (
           <Card className="w-full max-w-3xl shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">页面配置</CardTitle>
@@ -146,9 +166,13 @@ export default function App() {
               />
             </CardContent>
           </Card>
-        ) : tab === "api" ? (
+        ) : tab === "api" && canApi ? (
           <APITokens />
-        ) : (
+        ) : tab === "users" && canUsers ? (
+          <UsersManagement currentUser={view.user} />
+        ) : tab === "roles" && canRoles ? (
+          <RolesManagement />
+        ) : tab === "db" && canDb ? (
           <Dashboard
             onGoToSettings={() => setTab("settings")}
             onGoToModel={(slug) => {
@@ -156,10 +180,26 @@ export default function App() {
               setTab("models");
             }}
           />
+        ) : (
+          <NoPermissionCard tab={tab} />
         )}
       </AppShell>
       <Toaster position="top-center" richColors />
     </>
+  );
+}
+
+function NoPermissionCard({ tab }: { tab: HomeTab }) {
+  return (
+    <Card className="w-full max-w-md shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base">无权访问</CardTitle>
+        <CardDescription>
+          当前账号没有被授予 {TAB_PERMISSIONS.find((t) => t.key === tab)?.label ?? tab}
+          {" "}的权限，请联系管理员。
+        </CardDescription>
+      </CardHeader>
+    </Card>
   );
 }
 

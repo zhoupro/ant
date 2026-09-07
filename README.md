@@ -16,6 +16,7 @@
   ![逻辑模型](docs/screenshots/models-list.png)
 - **页面配置**：两级页面、图标、排序、关联模型，一站式管理底部导航。
   ![页面配置](docs/screenshots/pages-list.png)
+- **用户与角色**：超级管理员与普通用户分表管理；角色绑定功能权限；按角色决定可见的 Tab 与可执行的操作。
 - **设置中心**：上传根目录 / 受管 SQLite 路径热更新；修改密码；Swagger UI 跳转。
   ![设置中心](docs/screenshots/settings.png)
 

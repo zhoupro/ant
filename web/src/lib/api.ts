@@ -1,9 +1,16 @@
 import type {
   APIToken,
+  AuthUser,
   ChangePasswordInput,
+  CreateRoleInput,
+  CreateUserInput,
   CreatedAPIToken,
   LoginInput,
-  User,
+  ManagedUser,
+  PermissionItem,
+  Role,
+  UpdateRoleInput,
+  UpdateUserInput,
 } from "@/features/auth/types";
 import type {
   AddColumnInput,
@@ -50,8 +57,8 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   return (body?.data as T) ?? (null as unknown as T);
 }
 
-export function login(input: LoginInput): Promise<User> {
-  return request<User>(`${AUTH_BASE}/login`, {
+export function login(input: LoginInput): Promise<AuthUser> {
+  return request<AuthUser>(`${AUTH_BASE}/login`, {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -61,12 +68,12 @@ export function logout(): Promise<null> {
   return request<null>(`${AUTH_BASE}/logout`, { method: "POST" });
 }
 
-export function me(): Promise<User> {
-  return request<User>(`${AUTH_BASE}/me`);
+export function me(): Promise<AuthUser> {
+  return request<AuthUser>(`${AUTH_BASE}/me`);
 }
 
-export function changePassword(input: ChangePasswordInput): Promise<User> {
-  return request<User>(`${AUTH_BASE}/change-password`, {
+export function changePassword(input: ChangePasswordInput): Promise<AuthUser> {
+  return request<AuthUser>(`${AUTH_BASE}/change-password`, {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -437,4 +444,131 @@ export function deletePage(
 
 export function listPageIcons(): Promise<string[]> {
   return request<string[]>(`${PAGES_BASE}/icons`);
+}
+
+const ADMIN_USERS_BASE = "/api/admin-users";
+
+export function listAdminUsers(): Promise<ManagedUser[]> {
+  return request<ManagedUser[]>(ADMIN_USERS_BASE);
+}
+
+export function createAdminUser(input: CreateUserInput): Promise<ManagedUser> {
+  return request<ManagedUser>(ADMIN_USERS_BASE, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAdminUser(
+  id: number,
+  input: UpdateUserInput,
+): Promise<ManagedUser> {
+  return request<ManagedUser>(`${ADMIN_USERS_BASE}/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteAdminUser(id: number): Promise<{ ok: boolean; id: number }> {
+  return request<{ ok: boolean; id: number }>(
+    `${ADMIN_USERS_BASE}/${id}`,
+    { method: "DELETE" },
+  );
+}
+
+export function resetAdminUserPassword(
+  id: number,
+  password: string,
+): Promise<{ ok: boolean; id: number }> {
+  return request<{ ok: boolean; id: number }>(
+    `${ADMIN_USERS_BASE}/${id}/reset-password`,
+    { method: "POST", body: JSON.stringify({ password }) },
+  );
+}
+
+const REGULAR_USERS_BASE = "/api/regular-users";
+
+export function listRegularUsers(): Promise<ManagedUser[]> {
+  return request<ManagedUser[]>(REGULAR_USERS_BASE);
+}
+
+export function createRegularUser(
+  input: CreateUserInput,
+): Promise<ManagedUser> {
+  return request<ManagedUser>(REGULAR_USERS_BASE, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRegularUser(
+  id: number,
+  input: UpdateUserInput,
+): Promise<ManagedUser> {
+  return request<ManagedUser>(`${REGULAR_USERS_BASE}/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteRegularUser(
+  id: number,
+): Promise<{ ok: boolean; id: number }> {
+  return request<{ ok: boolean; id: number }>(
+    `${REGULAR_USERS_BASE}/${id}`,
+    { method: "DELETE" },
+  );
+}
+
+export function resetRegularUserPassword(
+  id: number,
+  password: string,
+): Promise<{ ok: boolean; id: number }> {
+  return request<{ ok: boolean; id: number }>(
+    `${REGULAR_USERS_BASE}/${id}/reset-password`,
+    { method: "POST", body: JSON.stringify({ password }) },
+  );
+}
+
+const ROLES_BASE = "/api/roles";
+
+export function listRoles(): Promise<Role[]> {
+  return request<Role[]>(ROLES_BASE);
+}
+
+export function createRole(input: CreateRoleInput): Promise<Role> {
+  return request<Role>(ROLES_BASE, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRole(
+  id: number,
+  input: UpdateRoleInput,
+): Promise<Role> {
+  return request<Role>(`${ROLES_BASE}/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteRole(id: number): Promise<{ ok: boolean; id: number }> {
+  return request<{ ok: boolean; id: number }>(
+    `${ROLES_BASE}/${id}`,
+    { method: "DELETE" },
+  );
+}
+
+export function listPermissions(): Promise<PermissionItem[]> {
+  return request<PermissionItem[]>("/api/permissions");
+}
+
+export function hasPermission(
+  user: { permissions: string[]; is_super_admin: boolean } | null | undefined,
+  code: string,
+): boolean {
+  if (!user) return false;
+  if (user.is_super_admin) return true;
+  return user.permissions.includes(code);
 }
