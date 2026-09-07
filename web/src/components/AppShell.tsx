@@ -12,6 +12,7 @@ export type HomeTab =
   | "db"
   | "models"
   | "pages"
+  | "cron"
   | "api"
   | "settings"
   | "users"

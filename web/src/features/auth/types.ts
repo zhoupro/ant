@@ -97,3 +97,64 @@ export interface UpdateRoleInput {
   description?: string;
   permission_ids?: number[];
 }
+
+export interface CronJob {
+  id: number;
+  name: string;
+  description?: string;
+  cron_expr: string;
+  command: string;
+  enabled: boolean;
+  created_by?: string;
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+  last_run_at?: string | null;
+  last_status?: string | null;
+  next_run_at?: string | null;
+}
+
+export interface CronJobInput {
+  name: string;
+  description?: string;
+  cron_expr: string;
+  command: string;
+  enabled?: boolean;
+}
+
+export interface CronJobRun {
+  id: number;
+  job_id: number;
+  status: "running" | "success" | "failed" | "canceled";
+  is_running?: boolean;
+  trigger: "schedule" | "manual";
+  exit_code?: number | null;
+  error?: string;
+  started_at: string;
+  finished_at?: string | null;
+  duration_ms: number;
+  stdout_preview: string;
+  stderr_preview: string;
+  stdout_truncated: boolean;
+  stderr_truncated: boolean;
+  stdout_size: number;
+  stderr_size: number;
+  log_path: string;
+  created_by?: string;
+}
+
+export interface CronJobRunList {
+  runs: CronJobRun[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CronJobLogSlice {
+  content: string;
+  offset: number;
+  next: number;
+  size: number;
+  truncated: boolean;
+  has_more: boolean;
+}

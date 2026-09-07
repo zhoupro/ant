@@ -5,6 +5,11 @@ import type {
   CreateRoleInput,
   CreateUserInput,
   CreatedAPIToken,
+  CronJob,
+  CronJobInput,
+  CronJobLogSlice,
+  CronJobRun,
+  CronJobRunList,
   LoginInput,
   ManagedUser,
   PermissionItem,
@@ -571,4 +576,88 @@ export function hasPermission(
   if (!user) return false;
   if (user.is_super_admin) return true;
   return user.permissions.includes(code);
+}
+
+const CRON_BASE = "/api/cronjobs";
+
+export function listCronJobs(): Promise<CronJob[]> {
+  return request<CronJob[]>(CRON_BASE);
+}
+
+export function getCronJob(id: number): Promise<CronJob> {
+  return request<CronJob>(`${CRON_BASE}/${id}`);
+}
+
+export function createCronJob(input: CronJobInput): Promise<CronJob> {
+  return request<CronJob>(CRON_BASE, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateCronJob(id: number, input: CronJobInput): Promise<CronJob> {
+  return request<CronJob>(`${CRON_BASE}/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteCronJob(id: number): Promise<{ ok: boolean; id: number }> {
+  return request<{ ok: boolean; id: number }>(`${CRON_BASE}/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function toggleCronJob(id: number, enabled: boolean): Promise<CronJob> {
+  return request<CronJob>(`${CRON_BASE}/${id}/toggle`, {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function runCronJob(id: number): Promise<{ run_id: number }> {
+  return request<{ run_id: number }>(`${CRON_BASE}/${id}/run`, {
+    method: "POST",
+  });
+}
+
+export function cancelCronRun(
+  id: number,
+  runId: number,
+): Promise<{ ok: boolean; already_finished?: boolean }> {
+  return request<{ ok: boolean; already_finished?: boolean }>(
+    `${CRON_BASE}/${id}/runs/${runId}/cancel`,
+    { method: "POST" },
+  );
+}
+
+export function listCronRuns(
+  id: number,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<CronJobRunList> {
+  const params = new URLSearchParams();
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  return request<CronJobRunList>(
+    `${CRON_BASE}/${id}/runs${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function getCronRun(id: number, runId: number): Promise<CronJobRun> {
+  return request<CronJobRun>(`${CRON_BASE}/${id}/runs/${runId}`);
+}
+
+export function readCronRunLog(
+  id: number,
+  runId: number,
+  opts: { offset?: number; limit?: number } = {},
+): Promise<CronJobLogSlice> {
+  const params = new URLSearchParams();
+  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return request<CronJobLogSlice>(
+    `${CRON_BASE}/${id}/runs/${runId}/log${qs ? `?${qs}` : ""}`,
+  );
 }

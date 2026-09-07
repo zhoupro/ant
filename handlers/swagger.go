@@ -67,6 +67,7 @@ func openAPISpec() gin.H {
 			{"name": "database"},
 			{"name": "logic-models"},
 			{"name": "runtime"},
+			{"name": "cron"},
 		},
 		"components": gin.H{
 			"securitySchemes": gin.H{
@@ -125,6 +126,13 @@ func schemas() gin.H {
 		"RuntimeRowResponse":   runtimeRowResponseSchema(),
 		"RuntimeDetail":        runtimeDetailSchema(),
 		"ExpandedRow":          expandedRowSchema(),
+		"CronJob":              cronJobSchema(),
+		"CronJobInput":         cronJobInputSchema(),
+		"CronJobToggle":        cronJobToggleSchema(),
+		"CronJobRun":           cronJobRunSchema(),
+		"CronJobRunList":       cronJobRunListSchema(),
+		"CronJobRunTrigger":    cronJobRunTriggerSchema(),
+		"CronJobLogSlice":      cronJobLogSliceSchema(),
 	}
 }
 
@@ -582,6 +590,114 @@ func expandedRowSchema() gin.H {
 	}
 }
 
+func cronJobSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"id":          gin.H{"type": "integer"},
+			"name":        gin.H{"type": "string"},
+			"description": gin.H{"type": "string"},
+			"cron_expr":   gin.H{"type": "string", "description": "Standard 5-field cron expression. Supports descriptors like @hourly, @daily."},
+			"command":     gin.H{"type": "string", "description": "Shell script passed to /bin/sh -c."},
+			"enabled":     gin.H{"type": "boolean"},
+			"created_by":  gin.H{"type": "string"},
+			"updated_by":  gin.H{"type": "string"},
+			"created_at":  gin.H{"type": "string", "format": "date-time"},
+			"updated_at":  gin.H{"type": "string", "format": "date-time"},
+			"last_run_at": gin.H{"type": "string", "format": "date-time"},
+			"last_status": gin.H{"type": "string", "enum": []string{"running", "success", "failed", "canceled", ""}},
+			"next_run_at": gin.H{"type": "string", "format": "date-time"},
+		},
+		"required": []string{"id", "name", "cron_expr", "command", "enabled"},
+	}
+}
+
+func cronJobInputSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"name":        gin.H{"type": "string", "description": "Display name. Required, max 128 chars."},
+			"description": gin.H{"type": "string", "description": "Optional, max 512 chars."},
+			"cron_expr":   gin.H{"type": "string", "description": "Standard 5-field cron expression. Required."},
+			"command":     gin.H{"type": "string", "description": "Shell script executed by /bin/sh -c. Required."},
+			"enabled":     gin.H{"type": "boolean", "description": "Defaults to true if omitted."},
+		},
+		"required": []string{"name", "cron_expr", "command"},
+	}
+}
+
+func cronJobToggleSchema() gin.H {
+	return gin.H{
+		"type":     "object",
+		"properties": gin.H{
+			"enabled": gin.H{"type": "boolean"},
+		},
+		"required": []string{"enabled"},
+	}
+}
+
+func cronJobRunSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"id":               gin.H{"type": "integer"},
+			"job_id":           gin.H{"type": "integer"},
+			"status":           gin.H{"type": "string", "enum": []string{"running", "success", "failed", "canceled"}},
+			"is_running":       gin.H{"type": "boolean", "description": "True when the underlying shell process is still alive."},
+			"trigger":          gin.H{"type": "string", "enum": []string{"schedule", "manual"}},
+			"exit_code":        gin.H{"type": "integer"},
+			"error":            gin.H{"type": "string"},
+			"started_at":       gin.H{"type": "string", "format": "date-time"},
+			"finished_at":      gin.H{"type": "string", "format": "date-time"},
+			"duration_ms":      gin.H{"type": "integer"},
+			"stdout_preview":   gin.H{"type": "string", "description": "Tail of stdout, up to ~8 KiB."},
+			"stderr_preview":   gin.H{"type": "string", "description": "Tail of stderr, up to ~8 KiB."},
+			"stdout_truncated": gin.H{"type": "boolean"},
+			"stderr_truncated": gin.H{"type": "boolean"},
+			"stdout_size":      gin.H{"type": "integer"},
+			"stderr_size":      gin.H{"type": "integer"},
+			"log_path":         gin.H{"type": "string", "description": "Relative path under the run logs root."},
+			"created_by":       gin.H{"type": "string"},
+		},
+		"required": []string{"id", "job_id", "status", "trigger", "started_at"},
+	}
+}
+
+func cronJobRunListSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"runs":   gin.H{"type": "array", "items": gin.H{"$ref": "#/components/schemas/CronJobRun"}},
+			"total":  gin.H{"type": "integer"},
+			"limit":  gin.H{"type": "integer"},
+			"offset": gin.H{"type": "integer"},
+		},
+	}
+}
+
+func cronJobRunTriggerSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"run_id": gin.H{"type": "integer", "description": "ID of the newly created run record."},
+		},
+	}
+}
+
+func cronJobLogSliceSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"content":   gin.H{"type": "string", "description": "UTF-8 decoded log chunk."},
+			"offset":    gin.H{"type": "integer", "description": "Byte offset of this chunk within the log file."},
+			"next":      gin.H{"type": "integer", "description": "Byte offset to pass for the next call."},
+			"size":      gin.H{"type": "integer", "description": "Total size of the log file in bytes."},
+			"truncated": gin.H{"type": "boolean", "description": "True when stdout/stderr were capped at the runner level."},
+			"has_more":  gin.H{"type": "boolean", "description": "True when more bytes remain after this chunk."},
+		},
+	}
+}
+
 func buildPaths() gin.H {
 	p := gin.H{}
 	addAuthPaths(p)
@@ -591,6 +707,7 @@ func buildPaths() gin.H {
 	addTablesPaths(p)
 	addLogicModelsPaths(p)
 	addRuntimePaths(p)
+	addCronPaths(p)
 	return p
 }
 
@@ -867,6 +984,91 @@ func addRuntimePaths(p gin.H) {
 			}},
 		}, []gin.H{okResp("Update result."), errResp()}),
 		"delete": op("runtime", "Delete row", "Delete a row. Joins in m2m relations are also cleaned up.", nil, []gin.H{okResp("Deletion result."), errResp()}),
+	}
+}
+
+func addCronPaths(p gin.H) {
+	jobParam := []gin.H{{"name": "id", "in": "path", "required": true, "type": "integer"}}
+	runParam := []gin.H{{"name": "runId", "in": "path", "required": true, "type": "integer"}}
+
+	p["/api/cronjobs"] = gin.H{
+		"get": op("cron", "List cron jobs", "List all scheduled jobs.", nil, []gin.H{
+			okResp("List of cron jobs."),
+			errResp(),
+		}),
+		"post": op("cron", "Create cron job", "Create a new scheduled shell job.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/CronJobInput"}},
+		}, []gin.H{
+			{"code": "200", "desc": "The created job.", "schema": gin.H{"$ref": "#/components/schemas/CronJob"}},
+			errResp(),
+		}),
+	}
+	p["/api/cronjobs/{id}"] = gin.H{
+		"parameters": jobParam,
+		"get": op("cron", "Get cron job", "Fetch a single cron job by id.", nil, []gin.H{
+			{"code": "200", "desc": "The job.", "schema": gin.H{"$ref": "#/components/schemas/CronJob"}},
+			errResp(),
+		}),
+		"put": op("cron", "Update cron job", "Replace the cron expression / command / metadata of a job.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/CronJobInput"}},
+		}, []gin.H{
+			{"code": "200", "desc": "The updated job.", "schema": gin.H{"$ref": "#/components/schemas/CronJob"}},
+			errResp(),
+		}),
+		"delete": op("cron", "Delete cron job", "Delete a job and all of its run history.", nil, []gin.H{
+			okResp("Deletion result."),
+			errResp(),
+		}),
+	}
+	p["/api/cronjobs/{id}/toggle"] = gin.H{
+		"parameters": jobParam,
+		"post": op("cron", "Toggle cron job", "Enable or disable a cron job without modifying its definition.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/CronJobToggle"}},
+		}, []gin.H{
+			{"code": "200", "desc": "The updated job.", "schema": gin.H{"$ref": "#/components/schemas/CronJob"}},
+			errResp(),
+		}),
+	}
+	p["/api/cronjobs/{id}/run"] = gin.H{
+		"parameters": jobParam,
+		"post": op("cron", "Trigger run now", "Run the cron job immediately, regardless of its schedule.", nil, []gin.H{
+			{"code": "200", "desc": "The new run id.", "schema": gin.H{"$ref": "#/components/schemas/CronJobRunTrigger"}},
+			errResp(),
+		}),
+	}
+	p["/api/cronjobs/{id}/runs"] = gin.H{
+		"parameters": append([]gin.H{
+			{"name": "limit", "in": "query", "type": "integer", "default": 50},
+			{"name": "offset", "in": "query", "type": "integer", "default": 0},
+		}, jobParam...),
+		"get": op("cron", "List runs", "Paginated run history for the job.", nil, []gin.H{
+			{"code": "200", "desc": "Run history.", "schema": gin.H{"$ref": "#/components/schemas/CronJobRunList"}},
+			errResp(),
+		}),
+	}
+	p["/api/cronjobs/{id}/runs/{runId}"] = gin.H{
+		"parameters": append([]gin.H{}, append(jobParam, runParam...)...),
+		"get": op("cron", "Get run detail", "Single run record including stdout/stderr previews and log path.", nil, []gin.H{
+			{"code": "200", "desc": "The run.", "schema": gin.H{"$ref": "#/components/schemas/CronJobRun"}},
+			errResp(),
+		}),
+	}
+	p["/api/cronjobs/{id}/runs/{runId}/log"] = gin.H{
+		"parameters": append([]gin.H{
+			{"name": "offset", "in": "query", "type": "integer", "default": 0},
+			{"name": "limit", "in": "query", "type": "integer", "default": 65536},
+		}, append(jobParam, runParam...)...),
+		"get": op("cron", "Read run log", "Read a chunk of the run's stdout/stderr log file.", nil, []gin.H{
+			{"code": "200", "desc": "Log chunk.", "schema": gin.H{"$ref": "#/components/schemas/CronJobLogSlice"}},
+			errResp(),
+		}),
+	}
+	p["/api/cronjobs/{id}/runs/{runId}/cancel"] = gin.H{
+		"parameters": append([]gin.H{}, append(jobParam, runParam...)...),
+		"post": op("cron", "Cancel running run", "Best-effort cancel of a still-running shell process.", nil, []gin.H{
+			okResp("Cancel result."),
+			errResp(),
+		}),
 	}
 }
 

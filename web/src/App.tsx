@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { AppShell, type HomeTab } from "@/components/AppShell";
 import { APITokens } from "@/components/APITokens";
+import { CronJobs } from "@/components/CronJobs";
 import { Files } from "@/components/Files";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
@@ -115,6 +116,7 @@ export default function App() {
   const canModels = hasPermission(view.user, "view_models");
   const canPages = hasPermission(view.user, "view_pages");
   const canApi = hasPermission(view.user, "view_api_tokens");
+  const canCron = hasPermission(view.user, "view_cron_jobs");
   const canSettings = hasPermission(view.user, "view_settings");
   const canUsers = hasPermission(view.user, "manage_users");
   const canRoles = hasPermission(view.user, "manage_roles");
@@ -168,6 +170,8 @@ export default function App() {
           </Card>
         ) : tab === "api" && canApi ? (
           <APITokens />
+        ) : tab === "cron" && canCron ? (
+          <CronJobs user={view.user} />
         ) : tab === "users" && canUsers ? (
           <UsersManagement currentUser={view.user} />
         ) : tab === "roles" && canRoles ? (

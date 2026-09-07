@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"mc/cronjobs"
 	"mc/datadb"
 	"mc/logicmodels"
 	"mc/models"
@@ -15,6 +16,9 @@ type Deps struct {
 	Manager    *datadb.Manager
 	LMStore    *logicmodels.Store
 	PagesStore *pages.Store
+	CronStore  *cronjobs.Store
+	CronRunner *cronjobs.Runner
+	CronSched  *cronjobs.Scheduler
 }
 
 func Register(r *gin.Engine, deps Deps) {
@@ -28,6 +32,11 @@ func Register(r *gin.Engine, deps Deps) {
 			settings.KeyUploadRoot:    {},
 			settings.KeyManagedDBPath: {},
 		},
+	}
+	cronDeps := &cronJobsDeps{
+		Store:  deps.CronStore,
+		Runner: deps.CronRunner,
+		Sched:  deps.CronSched,
 	}
 
 	mgr := deps.Manager
@@ -130,6 +139,9 @@ func Register(r *gin.Engine, deps Deps) {
 		api.DELETE("/roles/:id", authRequired, requirePermission(models.PermManageRoles), deleteRole)
 
 		api.GET("/permissions", authRequired, requirePermission(models.PermManageRoles), listPermissions)
+
+		// 定时任务 —— 整套 CRUD 与运行历史/日志查看
+		RegisterCronJobsRoutes(api, cronDeps)
 	}
 
 	r.Match([]string{"GET", "HEAD"}, "/uploads/:id", authRequired, requirePermission(models.PermViewFiles), WithUploadDeps(serveUpload, uploadDeps))

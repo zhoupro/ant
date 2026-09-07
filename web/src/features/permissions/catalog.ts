@@ -42,6 +42,7 @@ export const TAB_PERMISSIONS: TabPermissionSpec[] = [
   { key: "db", label: "数据库", permission: "view_database" },
   { key: "models", label: "逻辑模型", permission: "view_models" },
   { key: "pages", label: "页面", permission: "view_pages" },
+  { key: "cron", label: "定时任务", permission: "view_cron_jobs" },
   { key: "api", label: "API", permission: "view_api_tokens" },
   { key: "settings", label: "设置", permission: "view_settings" },
   { key: "users", label: "用户", permission: "manage_users" },
