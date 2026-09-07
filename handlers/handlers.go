@@ -130,6 +130,14 @@ func Register(r *gin.Engine, deps Deps) {
 		api.DELETE("/roles/:id", authRequired, requirePermission(models.PermManageRoles), deleteRole)
 
 		api.GET("/permissions", authRequired, requirePermission(models.PermManageRoles), listPermissions)
+
+		// 日志
+		api.GET("/logs", authRequired, requirePermission(models.PermViewLogs), listLogs)
+		api.GET("/logs/facets", authRequired, requirePermission(models.PermViewLogs), logFacets)
+		api.GET("/logs/:id", authRequired, requirePermission(models.PermViewLogs), getLog)
+		api.POST("/logs", authRequired, requirePermission(models.PermManageLogs), createLog)
+		api.DELETE("/logs/:id", authRequired, requirePermission(models.PermManageLogs), deleteLog)
+		api.DELETE("/logs", authRequired, requirePermission(models.PermManageLogs), clearLogs)
 	}
 
 	r.Match([]string{"GET", "HEAD"}, "/uploads/:id", authRequired, requirePermission(models.PermViewFiles), WithUploadDeps(serveUpload, uploadDeps))

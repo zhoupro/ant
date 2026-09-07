@@ -13,6 +13,7 @@ export type HomeTab =
   | "models"
   | "pages"
   | "api"
+  | "logs"
   | "settings"
   | "users"
   | "roles";

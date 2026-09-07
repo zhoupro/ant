@@ -32,6 +32,13 @@ import type {
   RuntimeSchema,
 } from "@/features/logicmodels/types";
 import type { Page, PageInput } from "@/features/pages/types";
+import type {
+  CreateLogInput,
+  LogEntry,
+  LogFacets,
+  LogLevel,
+  LogListResponse,
+} from "@/features/logs/types";
 
 const AUTH_BASE = "/api/auth";
 const DB_BASE = "/api/dbfile";
@@ -444,6 +451,59 @@ export function deletePage(
 
 export function listPageIcons(): Promise<string[]> {
   return request<string[]>(`${PAGES_BASE}/icons`);
+}
+
+const LOGS_BASE = "/api/logs";
+
+export interface ListLogsOptions {
+  level?: LogLevel;
+  source?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  order?: "asc" | "desc";
+}
+
+export function listLogs(
+  opts: ListLogsOptions = {},
+): Promise<LogListResponse> {
+  const params = new URLSearchParams();
+  if (opts.level) params.set("level", opts.level);
+  if (opts.source) params.set("source", opts.source);
+  if (opts.search) params.set("search", opts.search);
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+  if (opts.order) params.set("order", opts.order);
+  const qs = params.toString();
+  return request<LogListResponse>(
+    `${LOGS_BASE}${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function getLog(id: number): Promise<LogEntry> {
+  return request<LogEntry>(`${LOGS_BASE}/${encodeURIComponent(String(id))}`);
+}
+
+export function createLog(input: CreateLogInput): Promise<LogEntry> {
+  return request<LogEntry>(LOGS_BASE, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteLog(id: number): Promise<{ ok: boolean; id: string }> {
+  return request<{ ok: boolean; id: string }>(
+    `${LOGS_BASE}/${encodeURIComponent(String(id))}`,
+    { method: "DELETE" },
+  );
+}
+
+export function clearLogs(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(LOGS_BASE, { method: "DELETE" });
+}
+
+export function getLogFacets(): Promise<LogFacets> {
+  return request<LogFacets>(`${LOGS_BASE}/facets`);
 }
 
 const ADMIN_USERS_BASE = "/api/admin-users";

@@ -54,7 +54,7 @@ data/*.db-shm
 data/*.pid
 
 # 应用日志
-logs/
+/logs/
 *.log
 static
 dist/

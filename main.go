@@ -79,6 +79,10 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery(), gin.Logger())
 
+	// 日志服务只接受外部主动写入,不自动记录本服务的请求 —— 调用方应自行选择
+	// 是直接 POST /api/logs,还是让本服务内置中间件埋点(可在 handlers/logs.go 自行启用)。
+	_ = handlers.HTTPRequestLogMiddleware // 保留以备手动启用
+
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
 	r.GET("/swagger", handlers.SwaggerUI)
