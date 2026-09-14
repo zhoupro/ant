@@ -10,10 +10,8 @@
   ![二级菜单展开](docs/screenshots/home-secondary-open.png)
 - **运行时数据**：每个关联了逻辑模型的页面，自动获得增删改查表格、筛选、分页、上传字段。
   ![子页面运行时](docs/screenshots/home-runtime.png)
-- **数据库管理**：左侧表列表，右侧实时 CRUD，支持新建表、修改表结构（增删列）。
+- **数据库管理**：左侧表列表，右侧实时 CRUD；新建表后，「编辑表」对话框里同时配置物理结构（增删列）和逻辑模型（字段别名、业务类型、列表/可搜索/可编辑/必填），一次保存。
   ![数据库表](docs/screenshots/dashboard-table.png)
-- **逻辑模型**：从受管数据库拉取表，配置字段业务类型 / 关系，自动生成 `/api/runtime/:slug` 路由和前端表格。
-  ![逻辑模型](docs/screenshots/models-list.png)
 - **页面配置**：两级页面、图标、排序、关联模型，一站式管理底部导航。
   ![页面配置](docs/screenshots/pages-list.png)
 - **用户与角色**：超级管理员与普通用户分表管理；角色绑定功能权限；按角色决定可见的 Tab 与可执行的操作。
@@ -123,8 +121,8 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 │   │   │   │   ├── HomeView.tsx       # 首页（一级 + 二级菜单、运行时）
 │   │   │   │   ├── BottomNav.tsx      # 一级菜单
 │   │   │   │   └── PagesList.tsx      # 页面配置列表
-│   │   │   ├── db/                     # 受管库 CRUD（Dashboard / TableView / 等）
-│   │   │   ├── logicmodels/            # 逻辑模型编辑器 + 运行时
+│   │   │   ├── db/                     # 受管库 CRUD（Dashboard / EditTableDialog / 等）
+│   │   │   ├── logicmodels/            # 仅保留 ModelRuntime：被 Dashboard 与 HomeView 复用
 │   │   │   └── ui/                     # shadcn 原子组件
 │   │   ├── features/                   # 按领域拆分的类型与状态
 │   │   └── lib/api.ts                  # /api/* 封装
@@ -151,7 +149,7 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 
 ### 逻辑模型 → 运行时
 
-`POST /api/models/auto` 会基于受管库的一张表自动生成「逻辑模型」，模型记录字段业务类型（文本 / 数字 / 图片 / 引用 …）和关系。生成后：
+`POST /api/models/auto` 会基于受管库的一张表自动生成「逻辑模型」，模型记录字段业务类型（文本 / 数字 / 图片 / 引用 …）和关系。新建表时会自动建好对应的 `auto_<table>` 模型，编辑表结构（数据库 Tab 下的「编辑表」对话框）时也可一并修改字段的业务类型 / 列表 / 可搜索 / 可编辑 / 必填 / 提示，单次保存后：
 
 - 后端在 `/api/runtime/:slug` 暴露该模型的完整 CRUD；
 - 前端 `ModelRuntime` 直接渲染表格、新增 / 编辑表单、筛选、分页、上传；

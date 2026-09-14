@@ -23,7 +23,7 @@ SKIP_WEB_BUILD=1 ./restart.sh 8080  # 跳过前端构建，仅重建后端
 
 ```
 src/
-├── App.tsx                    # 顶层路由：home / files / db / models / pages / settings
+├── App.tsx                    # 顶层路由：home / files / db / pages / settings
 ├── main.tsx                   # createRoot 入口
 ├── index.css                  # Tailwind v4 + shadcn 主题变量
 ├── lib/
@@ -46,8 +46,8 @@ src/
     │   ├── HomeView.tsx       # 首页（一级 + 二级菜单、运行时）
     │   ├── BottomNav.tsx      # 一级菜单
     │   └── PagesList.tsx      # 页面配置列表
-    ├── db/                    # 受管库：Dashboard / TableView / RowEditor / Dialogs
-    ├── logicmodels/           # 逻辑模型：ModelsList / ModelEditor / ModelRuntime
+    ├── db/                    # 受管库：Dashboard / EditTableDialog / ModelRuntime / RowEditor / Dialogs
+    ├── logicmodels/           # 仅保留 ModelRuntime：被 Dashboard 与 HomeView 复用展示数据
     └── ui/                    # shadcn 自动生成的 UI 原子组件
 ```
 

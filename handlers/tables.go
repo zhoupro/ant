@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -605,6 +606,243 @@ func (h *TablesHandler) dropColumn(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true, "sql": stmt}})
+}
+
+type alterColumnInput struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	NotNull bool   `json:"notnull"`
+	Default string `json:"default"`
+}
+
+func (h *TablesHandler) alterColumn(c *gin.Context) {
+	gdb, ok := h.db(c)
+	if !ok {
+		return
+	}
+	table := c.Param("name")
+	oldName := c.Param("column")
+	if err := validateIdent(table); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := validateIdent(oldName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var in alterColumnInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := validateIdent(in.Name); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "非法字段名: " + in.Name})
+		return
+	}
+	newType := normalizeType(in.Type)
+	if newType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "字段类型无效: " + in.Type})
+		return
+	}
+
+	cols, _, err := readSchema(gdb, table)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var oldCol *Column
+	for i := range cols {
+		if cols[i].Name == oldName {
+			oldCol = &cols[i]
+			break
+		}
+	}
+	if oldCol == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "字段不存在: " + oldName})
+		return
+	}
+	if oldCol.PrimaryKey {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "主键字段不支持修改,如需变更请先取消主键"})
+		return
+	}
+
+	nameChanged := oldName != in.Name
+	typeChanged := !columnTypeEqual(*oldCol, newType, in.NotNull, in.Default)
+
+	if !nameChanged && !typeChanged {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true, "noop": true}})
+		return
+	}
+
+	if nameChanged {
+		if err := checkColumnNameUnused(gdb, table, in.Name); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	if nameChanged && !typeChanged {
+		quotedTable, _ := quoteIdent(table)
+		oldQ, _ := quoteIdent(oldName)
+		newQ, _ := quoteIdent(in.Name)
+		stmt := fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", quotedTable, oldQ, newQ)
+		if err := gdb.Exec(stmt).Error; err != nil {
+			msg, hint := datadb.ExplainDBError(err)
+			body := gin.H{"error": msg}
+			if hint != "" {
+				body["reason"] = hint
+			}
+			c.JSON(http.StatusBadRequest, body)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true, "renamed": true, "sql": stmt}})
+		return
+	}
+
+	if err := recreateColumn(gdb, table, *oldCol, in.Name, newType, in.NotNull, in.Default); err != nil {
+		msg, hint := datadb.ExplainDBError(err)
+		body := gin.H{"error": msg}
+		if hint != "" {
+			body["reason"] = hint
+		}
+		c.JSON(http.StatusBadRequest, body)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true, "altered": true}})
+}
+
+func checkColumnNameUnused(gdb *gorm.DB, table, name string) error {
+	cols, _, err := readSchema(gdb, table)
+	if err != nil {
+		return err
+	}
+	for _, c := range cols {
+		if c.Name == name {
+			return errors.New("字段名已存在: " + name)
+		}
+	}
+	return nil
+}
+
+func columnTypeEqual(c Column, newType string, notNull bool, defaultVal string) bool {
+	return c.Type == newType && c.NotNull == notNull && c.Default == defaultVal
+}
+
+// recreateColumn implements SQLite's "12-step procedure" to change a column's
+// type/NOT NULL/default (and optionally its name). It cannot change the PK
+// status — callers must reject PK columns before invoking this.
+//
+// Caveats: indexes, triggers, and foreign keys referencing the altered column
+// are NOT recreated. The old table is dropped and a new one takes its place.
+func recreateColumn(
+	gdb *gorm.DB,
+	table string,
+	oldCol Column,
+	newName string,
+	newType string,
+	notNull bool,
+	defaultVal string,
+) error {
+	cols, pks, err := readSchema(gdb, table)
+	if err != nil {
+		return err
+	}
+
+	newCols := make([]Column, 0, len(cols))
+	for _, c := range cols {
+		if c.Name == oldCol.Name {
+			newCols = append(newCols, Column{
+				Name:       newName,
+				Type:       newType,
+				NotNull:    notNull,
+				PrimaryKey: false,
+				Default:    defaultVal,
+			})
+		} else {
+			newCols = append(newCols, c)
+		}
+	}
+
+	tempName := fmt.Sprintf("_mc_alter_%s_%d", table, time.Now().UnixNano())
+
+	parts := make([]string, 0, len(newCols)+1)
+	for _, col := range newCols {
+		q := quoteIdentString(col.Name)
+		notNullClause := ""
+		if col.NotNull {
+			notNullClause = " NOT NULL"
+		}
+		defaultClause := ""
+		if col.Default != "" {
+			defaultClause = " DEFAULT " + col.Default
+		}
+		parts = append(parts, fmt.Sprintf("%s %s%s%s", q, col.Type, notNullClause, defaultClause))
+	}
+	if len(pks) > 0 {
+		quotedPKs := make([]string, 0, len(pks))
+		for _, p := range pks {
+			quotedPKs = append(quotedPKs, quoteIdentString(p))
+		}
+		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(quotedPKs, ", ")))
+	}
+	quotedTable := quoteIdentString(table)
+	quotedTemp := quoteIdentString(tempName)
+	createStmt := fmt.Sprintf("CREATE TABLE %s (\n  %s\n)", quotedTemp, strings.Join(parts, ",\n  "))
+
+	selectCols := make([]string, 0, len(cols))
+	for _, c := range cols {
+		q := quoteIdentString(c.Name)
+		if c.Name == oldCol.Name {
+			alias := quoteIdentString(newName)
+			selectCols = append(selectCols, fmt.Sprintf("CAST(%s AS %s) AS %s", q, newType, alias))
+		} else {
+			selectCols = append(selectCols, q)
+		}
+	}
+	targetCols := make([]string, 0, len(newCols))
+	for _, c := range newCols {
+		targetCols = append(targetCols, quoteIdentString(c.Name))
+	}
+	insertStmt := fmt.Sprintf("INSERT INTO %s (%s) SELECT %s FROM %s",
+		quotedTemp,
+		strings.Join(targetCols, ", "),
+		strings.Join(selectCols, ", "),
+		quotedTable,
+	)
+
+	tx := gdb.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+
+	if err := tx.Exec(createStmt).Error; err != nil {
+		return fmt.Errorf("创建临时表失败: %w", err)
+	}
+	if err := tx.Exec(insertStmt).Error; err != nil {
+		return fmt.Errorf("复制数据失败: %w", err)
+	}
+	if err := tx.Exec(fmt.Sprintf("DROP TABLE %s", quotedTable)).Error; err != nil {
+		return fmt.Errorf("删除旧表失败: %w", err)
+	}
+	if err := tx.Exec(fmt.Sprintf("ALTER TABLE %s RENAME TO %s", quotedTemp, quotedTable)).Error; err != nil {
+		return fmt.Errorf("重命名表失败: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func quoteIdentString(name string) string {
+	return `"` + name + `"`
 }
 
 func normalizeType(t string) string {

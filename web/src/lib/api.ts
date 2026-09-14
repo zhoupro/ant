@@ -30,7 +30,6 @@ import type {
   ModelConfig,
   ModelRecord,
   ModelSummary,
-  PhysicalTable,
   RowDetail,
   RowMutationInput,
   RuntimeRowResponse,
@@ -262,6 +261,17 @@ export function dropColumn(name: string, column: string): Promise<unknown> {
   );
 }
 
+export function alterColumn(
+  name: string,
+  column: string,
+  input: AddColumnInput,
+): Promise<unknown> {
+  return request(
+    `${TABLES_BASE}/${encodeURIComponent(name)}/columns/${encodeURIComponent(column)}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
 export function formatDateTime(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
@@ -322,18 +332,6 @@ export function deleteModel(slug: string): Promise<null> {
   return request<null>(`${MODELS_BASE}/${encodeURIComponent(slug)}`, {
     method: "DELETE",
   });
-}
-
-export function listModelTables(): Promise<{ tables: PhysicalTable[] }> {
-  return request<{ tables: PhysicalTable[] }>(`${MODELS_BASE}/tables`);
-}
-
-export function getModelTableSchema(
-  name: string,
-): Promise<PhysicalTable> {
-  return request<PhysicalTable>(
-    `${MODELS_BASE}/tables/${encodeURIComponent(name)}/schema`,
-  );
 }
 
 export function listBusinessTypes(): Promise<BusinessTypeInfo[]> {
@@ -416,11 +414,6 @@ export function deleteRuntimeRow(
     `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/${encodeURIComponent(String(id))}`,
     { method: "DELETE" },
   );
-}
-
-export function generateSlug(): string {
-  const rnd = Math.random().toString(36).slice(2, 8);
-  return `model_${Date.now().toString(36)}_${rnd}`;
 }
 
 const PAGES_BASE = "/api/pages";

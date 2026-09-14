@@ -11,20 +11,23 @@ import {
   formatBytes,
   getDBStatus,
   listTables,
+  saveModel,
 } from "@/lib/api";
-import type { CreateTableInput, DBStatus } from "@/features/db/types";
+import type { DBStatus } from "@/features/db/types";
 
-import { CreateTableDialog } from "./CreateTableDialog";
+import {
+  CreateTableDialog,
+  type CreateTableSubmitInput,
+} from "./CreateTableDialog";
 import { DBLoadPanel } from "./DBLoadPanel";
+import { EditTableDialog } from "./EditTableDialog";
 import { ModelRuntime } from "@/components/logicmodels/ModelRuntime";
-import { TableStructureDialog } from "./TableStructureDialog";
 
 interface DashboardProps {
   onGoToSettings: () => void;
-  onGoToModel: (slug: string) => void;
 }
 
-export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
+export function Dashboard({ onGoToSettings }: DashboardProps) {
   const [status, setStatus] = useState<DBStatus | null>(null);
   const [tables, setTables] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -98,16 +101,21 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
     }
   };
 
-  const handleCreated = async (input: CreateTableInput) => {
-    await createTable(input);
+  const handleCreated = async (input: CreateTableSubmitInput) => {
+    await createTable(input.table);
+    try {
+      await saveModel({
+        slug: `auto_${input.table.name}`,
+        label: input.model.label,
+        description: input.model.description,
+        config: input.model.config,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "模型保存失败");
+    }
     setCreateOpen(false);
     await refreshTables();
     toast.success("表已创建,CRUD 接口已就绪");
-    try {
-      await autoCreateModel({ physical: input.name });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "默认模型生成失败");
-    }
   };
 
   const handleSelectTable = async (name: string) => {
@@ -238,7 +246,7 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
               setActiveSlug(null);
             }}
             onEdit={() => {
-              if (activeSlug) onGoToModel(activeSlug);
+              if (active) setStructureFor(active);
             }}
             onDeleted={() => {
               setActive(null);
@@ -263,13 +271,16 @@ export function Dashboard({ onGoToSettings, onGoToModel }: DashboardProps) {
         onSubmit={handleCreated}
       />
       {structureFor ? (
-        <TableStructureDialog
+        <EditTableDialog
           open
           onOpenChange={(v) => {
             if (!v) setStructureFor(null);
           }}
           tableName={structureFor}
-          onChanged={() => void refreshTables()}
+          onChanged={() => {
+            void refreshTables();
+            void handleSelectTable(structureFor);
+          }}
         />
       ) : null}
     </div>

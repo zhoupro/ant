@@ -85,6 +85,7 @@ func Register(r *gin.Engine, deps Deps) {
 		api.POST("/tables", authRequired, requirePermission(models.PermManageDatabase), th.create)
 		api.DELETE("/tables/:name", authRequired, requirePermission(models.PermManageDatabase), th.drop)
 		api.POST("/tables/:name/columns", authRequired, requirePermission(models.PermManageDatabase), th.addColumn)
+		api.PUT("/tables/:name/columns/:column", authRequired, requirePermission(models.PermManageDatabase), th.alterColumn)
 		api.DELETE("/tables/:name/columns/:column", authRequired, requirePermission(models.PermManageDatabase), th.dropColumn)
 
 		// 逻辑模型

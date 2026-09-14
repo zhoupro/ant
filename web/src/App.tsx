@@ -17,7 +17,6 @@ import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { Settings } from "@/components/Settings";
 import { Dashboard } from "@/components/db/Dashboard";
-import { ModelsList } from "@/components/logicmodels/ModelsList";
 import { PagesList } from "@/components/pages/PagesList";
 import { HomeView } from "@/components/pages/HomeView";
 import { UsersManagement } from "@/components/users/UsersManagement";
@@ -49,7 +48,6 @@ function firstVisibleTab(user: AuthUser): HomeTab {
 export default function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [tab, setTab] = useState<HomeTab>("home");
-  const [pendingModelSlug, setPendingModelSlug] = useState<string | null>(null);
   const [editingPage, setEditingPage] = useState<Page | null>(null);
   const [, setActivePageId] = useState<string | null>(null);
 
@@ -114,7 +112,6 @@ export default function App() {
 
   const canFiles = hasPermission(view.user, "view_files");
   const canDb = hasPermission(view.user, "view_database");
-  const canModels = hasPermission(view.user, "view_models");
   const canPages = hasPermission(view.user, "view_pages");
   const canApi = hasPermission(view.user, "view_api_tokens");
 const canCron = hasPermission(view.user, "view_cron_jobs");
@@ -144,12 +141,6 @@ const canCron = hasPermission(view.user, "view_cron_jobs");
                 prev.kind === "home" ? { kind: "home", user: { ...prev.user, username: next } } : prev,
               )
             }
-          />
-        ) : tab === "models" && canModels ? (
-          <ModelsList
-            onGoToDB={() => setTab("db")}
-            initialSlug={pendingModelSlug}
-            onInitialSlugConsumed={() => setPendingModelSlug(null)}
           />
         ) : tab === "pages" && canPages ? (
           <Card className="w-full max-w-3xl shadow-sm">
@@ -183,10 +174,6 @@ const canCron = hasPermission(view.user, "view_cron_jobs");
         ) : tab === "db" && canDb ? (
           <Dashboard
             onGoToSettings={() => setTab("settings")}
-            onGoToModel={(slug) => {
-              setPendingModelSlug(slug);
-              setTab("models");
-            }}
           />
         ) : (
           <NoPermissionCard tab={tab} />
