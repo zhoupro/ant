@@ -941,15 +941,7 @@ func addRuntimePaths(p gin.H) {
 		}),
 	}
 	p["/api/runtime/{slug}/rows"] = gin.H{
-		"parameters": append([]gin.H{
-			{"name": "limit", "in": "query", "type": "integer", "default": 50},
-			{"name": "offset", "in": "query", "type": "integer", "default": 0},
-			{"name": "search", "in": "query", "type": "string"},
-		}, slugParam...),
-		"get": op("runtime", "List rows", "List rows for the model's root table. Includes joined related-table fields via LEFT JOIN. `fields[].physical` is the actual SQL column; `__rel_<id>_<key>` is a joined column.", nil, []gin.H{
-			okResp("Rows with related columns joined."),
-			errResp(),
-		}),
+		"parameters": slugParam,
 		"post": op("runtime", "Insert row", "Insert a root-table row. For many-to-many relations, include `relations[relId] = [id1, id2]` to link existing related IDs.", []gin.H{
 			{"name": "body", "in": "body", "required": true, "schema": gin.H{
 				"type": "object",
@@ -967,6 +959,26 @@ func addRuntimePaths(p gin.H) {
 				"required": []string{"values"},
 			}},
 		}, []gin.H{okResp("Inserted row id."), errResp()}),
+	}
+	p["/api/runtime/{slug}/rows/list"] = gin.H{
+		"parameters": slugParam,
+		"post": op("runtime", "List rows", "List rows for the model's root table. Includes joined related-table fields via LEFT JOIN. `fields[].physical` is the actual SQL column; `__rel_<id>_<key>` is a joined column.", []gin.H{
+			{"name": "body", "in": "body", "required": false, "schema": gin.H{
+				"type": "object",
+				"properties": gin.H{
+					"limit":  gin.H{"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+					"offset": gin.H{"type": "integer", "default": 0, "minimum": 0},
+					"search": gin.H{"type": "string"},
+					"sort":   gin.H{"type": "string", "description": "Physical column name to sort by."},
+					"order":  gin.H{"type": "string", "enum": []string{"asc", "desc"}, "default": "desc"},
+					"filters": gin.H{
+						"type":        "object",
+						"description": "Map of physical column -> value. Numeric columns match exactly; other columns match by LIKE.",
+						"additionalProperties": gin.H{"type": "string"},
+					},
+				},
+			}},
+		}, []gin.H{okResp("Rows with related columns joined."), errResp()}),
 	}
 	p["/api/runtime/{slug}/rows/{pk}"] = gin.H{
 		"parameters": append([]gin.H{}, append(slugParam, pkParam...)...),

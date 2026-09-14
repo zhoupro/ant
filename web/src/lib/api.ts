@@ -359,20 +359,22 @@ export function listRuntimeRows(
     filters?: Record<string, string>;
   } = {},
 ): Promise<RuntimeRowResponse> {
-  const params = new URLSearchParams();
-  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
-  if (opts.offset !== undefined) params.set("offset", String(opts.offset));
-  if (opts.search) params.set("search", opts.search);
-  if (opts.sort) params.set("sort", opts.sort);
-  if (opts.order) params.set("order", opts.order);
+  const body: Record<string, unknown> = {};
+  if (opts.limit !== undefined) body.limit = opts.limit;
+  if (opts.offset !== undefined) body.offset = opts.offset;
+  if (opts.search) body.search = opts.search;
+  if (opts.sort) body.sort = opts.sort;
+  if (opts.order) body.order = opts.order;
   if (opts.filters) {
+    const clean: Record<string, string> = {};
     for (const [k, v] of Object.entries(opts.filters)) {
-      if (v) params.set(`filter[${k}]`, v);
+      if (v) clean[k] = v;
     }
+    if (Object.keys(clean).length > 0) body.filters = clean;
   }
-  const qs = params.toString();
   return request<RuntimeRowResponse>(
-    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows${qs ? `?${qs}` : ""}`,
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/list`,
+    { method: "POST", body: JSON.stringify(body) },
   );
 }
 

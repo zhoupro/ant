@@ -208,9 +208,30 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "根表配置缺失"})
 		return
 	}
-	limit := atoiDefault(c.Query("limit"), 50, 1, 500)
-	offset := atoiDefault(c.Query("offset"), 0, 0, 1<<31-1)
-	search := strings.TrimSpace(c.Query("search"))
+	var req struct {
+		Limit   int               `json:"limit"`
+		Offset  int               `json:"offset"`
+		Search  string            `json:"search"`
+		Sort    string            `json:"sort"`
+		Order   string            `json:"order"`
+		Filters map[string]string `json:"filters"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	limit := req.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	offset := req.Offset
+	search := strings.TrimSpace(req.Search)
 
 	pt, err := readPhysicalSchema(gdb, root.Physical)
 	if err != nil {
@@ -380,16 +401,11 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		colType[f.Physical] = f.BusinessType
 	}
 	filterParts := []string{}
-	for col, vals := range c.Request.URL.Query() {
-		const prefix = "filter["
-		if !strings.HasPrefix(col, prefix) || !strings.HasSuffix(col, "]") {
+	for colName, val := range req.Filters {
+		val = strings.TrimSpace(val)
+		if val == "" || !physicalColSet[colName] {
 			continue
 		}
-		colName := strings.TrimSuffix(strings.TrimPrefix(col, prefix), "]")
-		if len(vals) == 0 || vals[0] == "" || !physicalColSet[colName] {
-			continue
-		}
-		val := vals[0]
 		bt := strings.ToLower(colType[colName])
 		switch {
 		case strings.Contains(bt, "int") || strings.Contains(bt, "number") || strings.Contains(bt, "decimal") || strings.Contains(bt, "real") || strings.Contains(bt, "double") || strings.Contains(bt, "numeric"):
@@ -416,8 +432,8 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		joinsClause = " " + strings.Join(joins, " ")
 	}
 
-	sortField := strings.TrimSpace(c.Query("sort"))
-	sortOrder := strings.ToLower(strings.TrimSpace(c.Query("order")))
+	sortField := strings.TrimSpace(req.Sort)
+	sortOrder := strings.ToLower(strings.TrimSpace(req.Order))
 	if sortOrder != "asc" && sortOrder != "desc" {
 		sortOrder = "desc"
 	}

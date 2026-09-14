@@ -102,7 +102,7 @@ func Register(r *gin.Engine, deps Deps) {
 		// 运行时 CRUD(同逻辑模型权限)
 		rt := NewRuntimeHandler(lmStore, mgr)
 		api.GET("/runtime/:slug/schema", authRequired, requirePermission(models.PermViewModels), rt.schema)
-		api.GET("/runtime/:slug/rows", authRequired, requirePermission(models.PermViewModels), rt.rows)
+		api.POST("/runtime/:slug/rows/list", authRequired, requirePermission(models.PermViewModels), rt.rows)
 		api.GET("/runtime/:slug/rows/:pk", authRequired, requirePermission(models.PermViewModels), rt.getRow)
 		api.POST("/runtime/:slug/rows", authRequired, requirePermission(models.PermManageModels), rt.insert)
 		api.PUT("/runtime/:slug/rows/:pk", authRequired, requirePermission(models.PermManageModels), rt.update)

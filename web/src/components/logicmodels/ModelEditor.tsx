@@ -1193,7 +1193,7 @@ function PreviewTab({ slug, label, tables, relations, rootAlias }: PreviewTabPro
         <div className="text-[11px] text-muted-foreground">自动生成的接口</div>
         <ul className="mt-1 space-y-0.5 font-mono">
           <li>GET /api/runtime/{slug || "slug"}/schema</li>
-          <li>GET /api/runtime/{slug || "slug"}/rows</li>
+          <li>POST /api/runtime/{slug || "slug"}/rows/list</li>
           <li>GET /api/runtime/{slug || "slug"}/rows/:id</li>
           <li>POST /api/runtime/{slug || "slug"}/rows</li>
           <li>PUT /api/runtime/{slug || "slug"}/rows/:id</li>
