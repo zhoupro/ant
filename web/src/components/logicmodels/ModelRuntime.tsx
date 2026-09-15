@@ -1,5 +1,7 @@
 import { JsonEditor } from "./JsonEditor";
 import { formatJsonOrNull } from "./jsonFormat";
+import { CronCell } from "./CronCell";
+import { CronPicker } from "./CronPicker";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -757,6 +759,8 @@ function CellValue({ value, field, onPreviewImage }: CellValueProps) {
     case "images":
     case "json":
       return <span className="font-mono text-[10px]">{summarize(value)}</span>;
+    case "cron":
+      return <CronCell value={String(value)} />;
     default:
       return <span>{summarize(value)}</span>;
   }
@@ -906,6 +910,8 @@ function DetailField({
           <DetailSelectValue value={value} options={field.options} />
         ) : field.business_type === "multiselect" ? (
           <DetailMultiSelectValue value={value} options={field.options} />
+        ) : field.business_type === "cron" ? (
+          <DetailCronValue value={value} />
         ) : (
           <DetailValue value={value} />
         )}
@@ -987,6 +993,19 @@ function DetailMultiSelectValue({
           </span>
         );
       })}
+    </div>
+  );
+}
+
+function DetailCronValue({ value }: { value: unknown }) {
+  if (value === null || value === undefined || value === "") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  const expr = String(value);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <CronCell value={expr} stopRowClick={false} />
+      <span className="font-mono text-[10px] text-muted-foreground">{expr}</span>
     </div>
   );
 }
@@ -1441,6 +1460,13 @@ function FieldInput({
             onChange={(e) => onChange(e.target.value)}
             className="h-8"
           />
+        </div>
+      );
+    case "cron":
+      return (
+        <div className="space-y-1 sm:col-span-2">
+          {common}
+          <CronPicker value={value} onChange={onChange} />
         </div>
       );
     default:

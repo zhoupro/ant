@@ -144,6 +144,10 @@ func Register(r *gin.Engine, deps Deps) {
 // 定时任务 —— 整套 CRUD 与运行历史/日志查看
 		RegisterCronJobsRoutes(api, cronDeps)
 
+		// 通用 cron 工具:解析表达式并给出接下来 N 次运行时间,
+		// 给逻辑模型里「定时」业务类型使用,任何登录用户均可调用。
+		api.GET("/cron/next-runs", authRequired, requirePermission(models.PermViewModels), cronNextRunsHandler)
+
 		// 日志
 		api.GET("/logs", authRequired, requirePermission(models.PermViewLogs), listLogs)
 		api.GET("/logs/facets", authRequired, requirePermission(models.PermViewLogs), logFacets)

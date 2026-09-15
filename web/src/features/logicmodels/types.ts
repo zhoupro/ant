@@ -18,7 +18,8 @@ export type BusinessType =
   | "url"
   | "email"
   | "phone"
-  | "color";
+  | "color"
+  | "cron";
 
 export interface SelectOption {
   label: string;

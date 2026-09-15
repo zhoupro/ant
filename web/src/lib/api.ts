@@ -716,3 +716,22 @@ export function readCronRunLog(
     `${CRON_BASE}/${id}/runs/${runId}/log${qs ? `?${qs}` : ""}`,
   );
 }
+
+export interface CronNextRunsResponse {
+  expr: string;
+  from: string;
+  count: number;
+  runs: string[];
+}
+
+// 把标准 5 段 cron 表达式翻译成接下来 N 次的运行时间,
+// 给「定时调度」业务类型在前端做实时预览用。
+export function getCronNextRuns(
+  expr: string,
+  count = 5,
+): Promise<CronNextRunsResponse> {
+  const params = new URLSearchParams();
+  params.set("expr", expr);
+  params.set("count", String(count));
+  return request<CronNextRunsResponse>(`/api/cron/next-runs?${params.toString()}`);
+}

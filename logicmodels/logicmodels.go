@@ -287,7 +287,7 @@ func BusinessTypes() []string {
 	return []string{
 		"text", "longtext", "number", "integer", "boolean", "date", "datetime",
 		"image", "images", "file", "json", "richtext", "select", "multiselect",
-		"url", "email", "phone", "color",
+		"url", "email", "phone", "color", "cron",
 	}
 }
 
@@ -338,6 +338,8 @@ func BusinessTypeLabel(t string) string {
 		return "电话"
 	case "color":
 		return "颜色"
+	case "cron":
+		return "定时调度"
 	}
 	return t
 }

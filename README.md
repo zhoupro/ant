@@ -15,6 +15,7 @@
 - **页面配置**：两级页面、图标、排序、关联模型，一站式管理底部导航。
   ![页面配置](docs/screenshots/pages-list.png)
 - **用户与角色**：超级管理员与普通用户分表管理；角色绑定功能权限；按角色决定可见的 Tab 与可执行的操作。
+- **定时调度字段**：字段业务类型里提供「定时调度」，用户点选常用频率即可，落库存标准 cron 表达式；表格里点一下调度标签就能看接下来 5 次运行时间，既友好又不失机器可读。
 - **设置中心**：上传根目录 / 受管 SQLite 路径热更新；修改密码；Swagger UI 跳转。
   ![设置中心](docs/screenshots/settings.png)
 - **日志模块（外部写入）**：面向外部系统暴露 `POST /api/logs`（Bearer Token 或 Session Cookie），调用方主动推送日志；Web UI 在线检索、过滤、分页、附带截图预览。**不会**自动记录本服务自身请求。
@@ -95,6 +96,8 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 │   ├── pages.go                  # 页面配置 CRUD
 │   ├── logicmodels.go            # 逻辑模型 CRUD + 自动生成模型
 │   ├── runtime.go                # /api/runtime/:slug 自动 CRUD
+│   ├── cronjobs.go               # /api/cronjobs/* 系统级定时任务
+│   ├── cron_preview.go           # /api/cron/next-runs 表达式 → 运行时间
 │   ├── tables.go                 # 受管库的表 / 列 / 行 CRUD
 │   ├── schema.go                 # 表结构查询
 │   ├── dbfile.go                 # 受管库状态（大小、表数量）
@@ -122,7 +125,10 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 │   │   │   │   ├── BottomNav.tsx      # 一级菜单
 │   │   │   │   └── PagesList.tsx      # 页面配置列表
 │   │   │   ├── db/                     # 受管库 CRUD（Dashboard / EditTableDialog / 等）
-│   │   │   ├── logicmodels/            # 仅保留 ModelRuntime：被 Dashboard 与 HomeView 复用
+│   │   │   ├── logicmodels/            # ModelRuntime 被 Dashboard 与 HomeView 复用
+│   │   │   │   ├── CronPicker.tsx      # 「定时调度」字段编辑器（预设 + 自定义 + 预览）
+│   │   │   │   ├── CronCell.tsx        # 表格里的调度标签,点击看接下来 5 次运行
+│   │   │   │   └── cron-utils.ts       # 调度模板 / 人类可读描述 / 相对时间
 │   │   │   └── ui/                     # shadcn 原子组件
 │   │   ├── features/                   # 按领域拆分的类型与状态
 │   │   └── lib/api.ts                  # /api/* 封装
@@ -155,6 +161,17 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 - 前端 `ModelRuntime` 直接渲染表格、新增 / 编辑表单、筛选、分页、上传；
 - 在「页面」里把页面关联到模型 slug，运行时就会被首页的 BottomNav 链入。
 
+#### 「定时调度」业务类型
+
+字段业务类型里有一个 `cron`（展示名「定时调度」），用来给任意表加一个"运行频率"字段：
+
+- **用户不用懂 cron**：表单里是 `CronPicker` —— 一排常用预设（每分钟 / 每 5 分钟 / 每小时 / 每天 0 点 / 每周一 / 每月 1 日 / 工作日 9 点 …），点一下即选中；不满足时可切到「自定义」直接写标准 5 段表达式；
+- **存的是标准表达式**：落库仍是 5 段 cron 字符串（`0 3 * * *`），方便外部调度器直接读取执行；写入前由后端 `robfig/cron` 校验，非法表达式直接报错；
+- **所见即所得**：选择过程中实时展示"接下来 3 次运行时间"；
+- **点击查看运行时间列表**：表格里该字段显示为人类可读标签（如「工作日 9 点」），点击弹出对话框，列出接下来 5 次运行时间，同时给出「明天 03:00 / 15 小时后」这类绝对 + 相对描述，并可展开原始 ISO 时间戳。
+
+后端对应提供 `GET /api/cron/next-runs?expr=...&count=5`：解析表达式并返回接下来 N 次运行时间（RFC3339，UTC），任何登录用户均可调用。
+
 ### 受管库切换
 
 `data/managed.db` 是默认受管库，但「设置中心」里的 `managed_db_path` 可改成任意本地 SQLite 文件，保存后立刻生效（无需重启）。系统库（`data/app.db`）始终存放账号、设置、逻辑模型、页面配置，与受管库隔离。
@@ -172,6 +189,8 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 | `/api/models/*` | 逻辑模型 CRUD + 自动生成（`/auto`、`/business-types`、`/tables`、`/tables/:name/schema`） |
 | `/api/runtime/:slug/*` | 逻辑模型自动生成的运行时 CRUD + schema |
 | `/api/pages*` | 页面配置 CRUD + 可用图标列表 |
+| `/api/cron/next-runs` | 解析 cron 表达式并返回接下来 N 次运行时间（「定时调度」字段用） |
+| `/api/cronjobs/*` | 系统级 shell 定时任务 CRUD + 运行历史 / 日志 |
 | `/api/logs*` | 日志查询 / 新建 / 删除 / 清空 + 级别 / 来源 / 关键字过滤 + 图片附件 |
 
 ### 日志服务（外部系统接入）

@@ -134,6 +134,7 @@ func schemas() gin.H {
 		"CronJobRunList":       cronJobRunListSchema(),
 		"CronJobRunTrigger":    cronJobRunTriggerSchema(),
 		"CronJobLogSlice":      cronJobLogSliceSchema(),
+		"CronNextRuns":         cronNextRunsSchema(),
 		"Log":                  logSchema(),
 		"LogImage":             logImageSchema(),
 		"LogListResponse":      logListResponseSchema(),
@@ -704,6 +705,18 @@ func cronJobLogSliceSchema() gin.H {
 	}
 }
 
+func cronNextRunsSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"expr":  gin.H{"type": "string", "description": "Echoed cron expression."},
+			"from":  gin.H{"type": "string", "description": "Base time used for the calculation (RFC3339, UTC)."},
+			"count": gin.H{"type": "integer", "description": "Number of upcoming runs actually returned."},
+			"runs":  gin.H{"type": "array", "items": gin.H{"type": "string"}, "description": "Upcoming run times (RFC3339, UTC), earliest first."},
+		},
+	}
+}
+
 func buildPaths() gin.H {
 	p := gin.H{}
 	addAuthPaths(p)
@@ -1086,6 +1099,16 @@ func addCronPaths(p gin.H) {
 		"parameters": append([]gin.H{}, append(jobParam, runParam...)...),
 		"post": op("cron", "Cancel running run", "Best-effort cancel of a still-running shell process.", nil, []gin.H{
 			okResp("Cancel result."),
+			errResp(),
+		}),
+	}
+	p["/api/cron/next-runs"] = gin.H{
+		"get": op("cron", "Preview next cron runs", "Parse a standard 5-field cron expression and return the next N run times. Used by the \"cron\" business type of logic models.", []gin.H{
+			{"name": "expr", "in": "query", "required": true, "type": "string", "description": "Standard 5-field cron expression."},
+			{"name": "count", "in": "query", "required": false, "type": "integer", "description": "How many upcoming runs to return, 1-20, default 5."},
+			{"name": "from", "in": "query", "required": false, "type": "string", "description": "Base time in RFC3339, default now."},
+		}, []gin.H{
+			{"code": "200", "desc": "Upcoming run times in RFC3339 (UTC).", "schema": gin.H{"$ref": "#/components/schemas/CronNextRuns"}},
 			errResp(),
 		}),
 	}

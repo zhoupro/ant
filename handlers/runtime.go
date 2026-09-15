@@ -12,10 +12,17 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
 
 func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
+
+// cronExprParser 与 cronjobs.Scheduler 共享同一套解析规则,
+// 仅用来在写入「cron」字段前做语法校验,不参与调度。
+var cronExprParser = cron.NewParser(
+	cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+)
 
 type RuntimeHandler struct {
 	store *logicmodels.Store
@@ -1006,6 +1013,19 @@ func coerceValue(v any, f logicmodels.FieldConfig) (any, error) {
 			return nil, nil
 		}
 		return v, nil
+	case "cron":
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("定时调度需要字符串值")
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, nil
+		}
+		if _, err := cronExprParser.Parse(s); err != nil {
+			return nil, fmt.Errorf("cron 表达式无效: %w", err)
+		}
+		return s, nil
 	}
 	return v, nil
 }
