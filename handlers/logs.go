@@ -4,17 +4,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mc/applogs"
+	"mc/db"
+	"mc/logentries"
+	"mc/models"
 	"net/http"
 	"strings"
 	"time"
 
-	"mc/db"
-	"mc/applogs"
-	"mc/models"
-
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// LogsHandler 把所有 /api/logs* 端点集中在一处,持有一个 *logentries.Store
+// 实例(由 Register 时注入)。
+type LogsHandler struct {
+	store *logentries.Store
+}
+
+func NewLogsHandler(store *logentries.Store) *LogsHandler {
+	return &LogsHandler{store: store}
+}
 
 type logInput struct {
 	Level    models.LogLevel `json:"level"`
@@ -35,56 +45,30 @@ type listLogsQuery struct {
 }
 
 // listLogs GET /api/logs?level=&source=&search=&limit=&offset=&order=
-func listLogs(c *gin.Context) {
+func (h *LogsHandler) listLogs(c *gin.Context) {
 	var q listLogsQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if q.Limit <= 0 || q.Limit > 200 {
-		q.Limit = 50
-	}
-	if q.Offset < 0 {
-		q.Offset = 0
-	}
-	if q.Order == "" {
-		q.Order = "desc"
-	}
-
-	tx := db.DB.Model(&models.Log{})
-	if q.Level != "" {
-		tx = tx.Where("level = ?", q.Level)
-	}
-	if q.Source != "" {
-		tx = tx.Where("source = ?", q.Source)
-	}
-	if s := strings.TrimSpace(q.Search); s != "" {
-		like := "%" + s + "%"
-		tx = tx.Where("title LIKE ? OR message LIKE ?", like, like)
-	}
-
-	var total int64
-	if err := tx.Count(&total).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	var rows []models.Log
-	order := "created_at desc"
-	if strings.EqualFold(q.Order, "asc") {
-		order = "created_at asc"
-	}
-	if err := tx.Order(order).Limit(q.Limit).Offset(q.Offset).Find(&rows).Error; err != nil {
+	rows, total, levels, sources, err := h.store.List(logentries.ListQuery{
+		Level:  q.Level,
+		Source: q.Source,
+		Search: q.Search,
+		Limit:  q.Limit,
+		Offset: q.Offset,
+		Order:  q.Order,
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	items := make([]gin.H, 0, len(rows))
 	for i := range rows {
-		items = append(items, buildLogPayload(&rows[i]))
+		items = append(items, h.buildLogPayload(&rows[i]))
 	}
 
-	levels, sources := collectLogFacets()
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{
 		"items":   items,
 		"total":   total,
@@ -96,10 +80,10 @@ func listLogs(c *gin.Context) {
 }
 
 // getLog GET /api/logs/:id
-func getLog(c *gin.Context) {
+func (h *LogsHandler) getLog(c *gin.Context) {
 	id := c.Param("id")
-	var row models.Log
-	if err := db.DB.First(&row, id).Error; err != nil {
+	row, err := h.store.Get(id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "日志不存在"})
 			return
@@ -107,11 +91,12 @@ func getLog(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": buildLogPayload(&row)})
+	c.JSON(http.StatusOK, gin.H{"data": h.buildLogPayload(row)})
 }
 
-// createLog POST /api/logs —— 供前端手动写入;也作为公开 API 暴露。
-func createLog(c *gin.Context) {
+// createLog POST /api/logs —— 公开写入入口,供外部系统通过 Bearer / Cookie
+// 调用,日志随后落到受管库并通过「日志」页面以逻辑模型方式呈现。
+func (h *LogsHandler) createLog(c *gin.Context) {
 	var in logInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -140,7 +125,7 @@ func createLog(c *gin.Context) {
 		title = title[:255]
 	}
 
-	entry := models.Log{
+	entry := logentries.Log{
 		Level:   level,
 		Source:  source,
 		Title:   title,
@@ -162,49 +147,27 @@ func createLog(c *gin.Context) {
 		entry.Metadata = string(b)
 	}
 
-	err := db.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&entry).Error; err != nil {
-			return err
+	if len(in.ImageIDs) > 0 {
+		unique := dedupLogImageIDs(in.ImageIDs)
+		if err := assertAttachmentsExist(db.DB, unique); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
-		if len(in.ImageIDs) > 0 {
-			unique := dedupLogImageIDs(in.ImageIDs)
-			if err := assertAttachmentsExist(tx, unique); err != nil {
-				return err
-			}
-			rows := make([]models.LogImage, 0, len(unique))
-			for i, id := range unique {
-				rows = append(rows, models.LogImage{
-					LogID:        entry.ID,
-					AttachmentID: id,
-					SortOrder:    i,
-				})
-			}
-			if err := tx.Create(&rows).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
+	}
+	if err := h.store.Create(&entry, in.ImageIDs); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	var saved models.Log
-	db.DB.First(&saved, entry.ID)
-	c.JSON(http.StatusOK, gin.H{"data": buildLogPayload(&saved)})
+	// Create 直接基于已落库的 entry 序列化(连同日志 images)返回,
+	// 不再二次 SELECT —— 同连接的事务刚 commit 后,马上 SELECT 会被
+	// GORM 的连接池拿到另一条空闲连接,极少数情况下会错过提交。
+	c.JSON(http.StatusOK, gin.H{"data": h.buildLogPayload(&entry)})
 }
 
 // deleteLog DELETE /api/logs/:id
-func deleteLog(c *gin.Context) {
+func (h *LogsHandler) deleteLog(c *gin.Context) {
 	id := c.Param("id")
-	err := db.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("log_id = ?", id).Delete(&models.LogImage{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&models.Log{}, id).Error
-	})
-	if err != nil {
+	if err := h.store.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -212,57 +175,32 @@ func deleteLog(c *gin.Context) {
 }
 
 // clearLogs DELETE /api/logs —— 清空全部日志(以及关联表)。需要 manage_logs 权限。
-func clearLogs(c *gin.Context) {
-	err := db.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("1 = 1").Delete(&models.LogImage{}).Error; err != nil {
-			return err
-		}
-		return tx.Where("1 = 1").Delete(&models.Log{}).Error
-	})
-	if err != nil {
+func (h *LogsHandler) clearLogs(c *gin.Context) {
+	if err := h.store.Clear(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true}})
 }
 
-// logFacets GET /api/logs/facets —— 返回去重后的 level / source 列表,便于前端填充过滤下拉框。
-func logFacets(c *gin.Context) {
-	levels, sources := collectLogFacets()
+// logFacets GET /api/logs/facets —— 返回去重后的 level / source 列表。
+func (h *LogsHandler) logFacets(c *gin.Context) {
+	levels, sources := h.store.Facets()
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{
 		"levels":  levels,
 		"sources": sources,
 	}})
 }
 
-func collectLogFacets() ([]string, []string) {
-	levels := []string{
-		string(models.LogLevelDebug),
-		string(models.LogLevelInfo),
-		string(models.LogLevelWarn),
-		string(models.LogLevelError),
+// buildLogPayload 把一条日志行打包成前端友好的 JSON。关联附件通过 log_images
+// 表读取(数据在受管库);附件元数据需要再回到 app.db 取出。
+func (h *LogsHandler) buildLogPayload(row *logentries.Log) gin.H {
+	var images []logentries.LogImage
+	if gdb, err := h.store.DB(); err == nil {
+		gdb.Where("log_id = ?", row.ID).
+			Order("sort_order asc, attachment_id asc").
+			Find(&images)
 	}
-	var rawSources []string
-	db.DB.Model(&models.Log{}).
-		Distinct("source").
-		Where("source <> ''").
-		Pluck("source", &rawSources)
-	sources := make([]string, 0, len(rawSources))
-	for _, s := range rawSources {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		sources = append(sources, s)
-	}
-	return levels, sources
-}
-
-// buildLogPayload 把一条日志行打包成前端友好的 JSON。
-// 关联的 attachment 列表通过 LogImage 表 LEFT JOIN 取出。
-func buildLogPayload(row *models.Log) gin.H {
-	var images []models.LogImage
-	db.DB.Where("log_id = ?", row.ID).Order("sort_order asc, attachment_id asc").Find(&images)
 
 	attachments := make([]gin.H, 0, len(images))
 	if len(images) > 0 {
@@ -271,24 +209,25 @@ func buildLogPayload(row *models.Log) gin.H {
 			ids = append(ids, li.AttachmentID)
 		}
 		var atts []models.Attachment
-		db.DB.Where("id IN ?", ids).Find(&atts)
-		byID := make(map[uint]models.Attachment, len(atts))
-		for _, a := range atts {
-			byID[a.ID] = a
-		}
-		for _, li := range images {
-			a, ok := byID[li.AttachmentID]
-			if !ok {
-				continue
+		if err := db.DB.Where("id IN ?", ids).Find(&atts).Error; err == nil {
+			byID := make(map[uint]models.Attachment, len(atts))
+			for _, a := range atts {
+				byID[a.ID] = a
 			}
-			attachments = append(attachments, gin.H{
-				"id":            a.ID,
-				"original_name": a.OriginalName,
-				"size":          a.Size,
-				"content_type":  a.ContentType,
-				"url":           fmt.Sprintf("/uploads/%d", a.ID),
-				"created_at":    a.CreatedAt,
-			})
+			for _, li := range images {
+				a, ok := byID[li.AttachmentID]
+				if !ok {
+					continue
+				}
+				attachments = append(attachments, gin.H{
+					"id":            a.ID,
+					"original_name": a.OriginalName,
+					"size":          a.Size,
+					"content_type":  a.ContentType,
+					"url":           fmt.Sprintf("/uploads/%d", a.ID),
+					"created_at":    a.CreatedAt,
+				})
+			}
 		}
 	}
 
@@ -323,6 +262,7 @@ func buildLogPayload(row *models.Log) gin.H {
 	}
 }
 
+// assertAttachmentsExist 校验图片 ID 列表都能在 app.db 的 attachments 中找到。
 func assertAttachmentsExist(tx *gorm.DB, ids []uint) error {
 	if len(ids) == 0 {
 		return nil

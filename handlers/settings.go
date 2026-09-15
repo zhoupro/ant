@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"mc/datadb"
+	"mc/logentries"
 	"mc/logicmodels"
 	"mc/pages"
+	"mc/seed"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +24,7 @@ type SettingsDeps struct {
 	Manager      *datadb.Manager
 	LMStore      *logicmodels.Store
 	PagesStore   *pages.Store
+	LogStore     *logentries.Store
 }
 
 type settingsPayload struct {
@@ -96,6 +99,9 @@ func updateSettings(c *gin.Context) {
 			if deps.PagesStore != nil {
 				deps.PagesStore.ResetCache()
 			}
+			if deps.LogStore != nil {
+				deps.LogStore.ResetCache()
+			}
 			value = ""
 		} else {
 			if !filepath.IsAbs(value) {
@@ -136,6 +142,18 @@ func updateSettings(c *gin.Context) {
 			}
 			if deps.PagesStore != nil {
 				deps.PagesStore.ResetCache()
+			}
+			if deps.LogStore != nil {
+				deps.LogStore.ResetCache()
+			}
+			// 新受管库可能是一张空的 SQLite 文件,把默认日志 schema/页面/模型
+			// 一起补上 —— 与启动时的 seed.EnsureAll 行为一致。
+			if err := seed.EnsureAll(deps.LogStore, deps.LMStore, deps.PagesStore); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":  "受管库已切换,但初始化默认日志配置失败: " + err.Error(),
+					"reason": "手动新建/迁移后重启服务即可恢复,或检查受管库文件是否被锁",
+				})
+				return
 			}
 			value = abs
 		}

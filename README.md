@@ -18,8 +18,7 @@
 - **定时调度字段**：字段业务类型里提供「定时调度」，用户点选常用频率即可，落库存标准 cron 表达式；表格里点一下调度标签就能看接下来 5 次运行时间，既友好又不失机器可读。
 - **设置中心**：上传根目录 / 受管 SQLite 路径热更新；修改密码；Swagger UI 跳转。
   ![设置中心](docs/screenshots/settings.png)
-- **日志模块（外部写入）**：面向外部系统暴露 `POST /api/logs`（Bearer Token 或 Session Cookie），调用方主动推送日志；Web UI 在线检索、过滤、分页、附带截图预览。**不会**自动记录本服务自身请求。
-  ![日志管理](docs/screenshots/logs.png)
+- **日志模块（外部写入）**：面向外部系统暴露 `POST /api/logs`（Bearer Token 或 Session Cookie），调用方主动推送日志；日志数据落到受管 SQLite 的 `logs` / `log_images` 表，并在首次启动时自动以「日志」页面 + `auto_logs` 逻辑模型挂到首页底部导航，复用通用的 ModelRuntime 做增删改查与筛选。**不会**自动记录本服务自身请求。
 
 ## 快速开始
 
@@ -98,6 +97,7 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 │   ├── runtime.go                # /api/runtime/:slug 自动 CRUD
 │   ├── cronjobs.go               # /api/cronjobs/* 系统级定时任务
 │   ├── cron_preview.go           # /api/cron/next-runs 表达式 → 运行时间
+│   ├── logs.go                   # /api/logs* 外部日志读写（受管库）
 │   ├── tables.go                 # 受管库的表 / 列 / 行 CRUD
 │   ├── schema.go                 # 表结构查询
 │   ├── dbfile.go                 # 受管库状态（大小、表数量）
@@ -107,6 +107,8 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 ├── models/                       # 系统库 GORM 模型
 ├── logicmodels/                  # 逻辑模型存储 + 自动生成
 ├── pages/                        # 页面配置存储
+├── logentries/                   # 日志条目(logs/log_images)存储 + 自动迁移
+├── seed/                         # 首次启动时把默认页面/模型写入受管库
 ├── settings/                     # 设置 KV 存储
 ├── datadb/                       # 受管 SQLite 管理（动态加载 / 切换）
 ├── db/                           # 系统 SQLite 初始化、默认账号
@@ -119,7 +121,6 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 │   │   │   ├── ChangePasswordForm.tsx
 │   │   │   ├── Settings.tsx      # 设置中心
 │   │   │   ├── Files.tsx         # 文件上传管理
-│   │   │   ├── Logs.tsx          # 日志模块（在线查看 / 新建 / 过滤）
 │   │   │   ├── pages/
 │   │   │   │   ├── HomeView.tsx       # 首页（一级 + 二级菜单、运行时）
 │   │   │   │   ├── BottomNav.tsx      # 一级菜单
@@ -196,7 +197,10 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 ### 日志服务（外部系统接入）
 
 本服务的日志模块**只接受外部主动写入**，不会自动记录本服务的请求日志。调用方通过
-`POST /api/logs` 把日志推上来，登录后的用户在 Web 端统一查看、检索、删除。
+`POST /api/logs` 把日志推上来，日志落到受管 SQLite 的 `logs` 表 —— 同时首次启动会在
+「页面」表里写入默认的「日志」页面（slug=`logs`, 关联逻辑模型 `auto_logs`），首页底部
+导航里就会挂出这个入口，用户可以像其他业务表一样用 ModelRuntime 直接增删改查、筛选
+与分页。
 
 #### 鉴权
 

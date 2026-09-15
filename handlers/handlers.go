@@ -3,6 +3,7 @@ package handlers
 import (
 	"mc/cronjobs"
 	"mc/datadb"
+	"mc/logentries"
 	"mc/logicmodels"
 	"mc/models"
 	"mc/pages"
@@ -16,6 +17,7 @@ type Deps struct {
 	Manager    *datadb.Manager
 	LMStore    *logicmodels.Store
 	PagesStore *pages.Store
+	LogStore   *logentries.Store
 	CronStore  *cronjobs.Store
 	CronRunner *cronjobs.Runner
 	CronSched  *cronjobs.Scheduler
@@ -28,6 +30,7 @@ func Register(r *gin.Engine, deps Deps) {
 		Manager:      deps.Manager,
 		LMStore:      deps.LMStore,
 		PagesStore:   deps.PagesStore,
+		LogStore:     deps.LogStore,
 		EditableKeys: map[string]struct{}{
 			settings.KeyUploadRoot:    {},
 			settings.KeyManagedDBPath: {},
@@ -42,6 +45,7 @@ func Register(r *gin.Engine, deps Deps) {
 	mgr := deps.Manager
 	lmStore := deps.LMStore
 	pagesStore := deps.PagesStore
+	logStore := deps.LogStore
 
 	api := r.Group("/api")
 	{
@@ -148,13 +152,14 @@ func Register(r *gin.Engine, deps Deps) {
 		// 给逻辑模型里「定时」业务类型使用,任何登录用户均可调用。
 		api.GET("/cron/next-runs", authRequired, requirePermission(models.PermViewModels), cronNextRunsHandler)
 
-		// 日志
-		api.GET("/logs", authRequired, requirePermission(models.PermViewLogs), listLogs)
-		api.GET("/logs/facets", authRequired, requirePermission(models.PermViewLogs), logFacets)
-		api.GET("/logs/:id", authRequired, requirePermission(models.PermViewLogs), getLog)
-		api.POST("/logs", authRequired, requirePermission(models.PermManageLogs), createLog)
-		api.DELETE("/logs/:id", authRequired, requirePermission(models.PermManageLogs), deleteLog)
-		api.DELETE("/logs", authRequired, requirePermission(models.PermManageLogs), clearLogs)
+		// 日志 —— 落到受管库,通过「日志」页面以逻辑模型形式呈现。
+		logs := NewLogsHandler(logStore)
+		api.GET("/logs", authRequired, requirePermission(models.PermViewLogs), logs.listLogs)
+		api.GET("/logs/facets", authRequired, requirePermission(models.PermViewLogs), logs.logFacets)
+		api.GET("/logs/:id", authRequired, requirePermission(models.PermViewLogs), logs.getLog)
+		api.POST("/logs", authRequired, requirePermission(models.PermManageLogs), logs.createLog)
+		api.DELETE("/logs/:id", authRequired, requirePermission(models.PermManageLogs), logs.deleteLog)
+		api.DELETE("/logs", authRequired, requirePermission(models.PermManageLogs), logs.clearLogs)
 	}
 
 	r.Match([]string{"GET", "HEAD"}, "/uploads/:id", authRequired, requirePermission(models.PermViewFiles), WithUploadDeps(serveUpload, uploadDeps))

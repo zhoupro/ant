@@ -181,6 +181,7 @@ var AllowedIcons = []string{
 	"ListChecks", "ClipboardList", "Inbox", "MessageSquare", "Mail",
 	"Calendar", "Clock", "Settings", "Wrench", "Sparkles", "Star", "Heart",
 	"Image", "Camera", "Music", "Video", "BookMarked", "Bookmark",
+	"ScrollText",
 }
 
 func IsValidIcon(name string) bool {
