@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"mc/cronjobs"
+	"mc/dashboards"
 	"mc/datadb"
 	"mc/logicmodels"
 	"mc/models"
@@ -12,13 +13,14 @@ import (
 )
 
 type Deps struct {
-	Store      *settings.Store
-	Manager    *datadb.Manager
-	LMStore    *logicmodels.Store
-	PagesStore *pages.Store
-	CronStore  *cronjobs.Store
-	CronRunner *cronjobs.Runner
-	CronSched  *cronjobs.Scheduler
+	Store        *settings.Store
+	Manager      *datadb.Manager
+	LMStore      *logicmodels.Store
+	PagesStore   *pages.Store
+	DashStore    *dashboards.Store
+	CronStore    *cronjobs.Store
+	CronRunner   *cronjobs.Runner
+	CronSched    *cronjobs.Scheduler
 }
 
 func Register(r *gin.Engine, deps Deps) {
@@ -28,6 +30,7 @@ func Register(r *gin.Engine, deps Deps) {
 		Manager:      deps.Manager,
 		LMStore:      deps.LMStore,
 		PagesStore:   deps.PagesStore,
+		DashStore:    deps.DashStore,
 		EditableKeys: map[string]struct{}{
 			settings.KeyUploadRoot:    {},
 			settings.KeyManagedDBPath: {},
@@ -117,6 +120,10 @@ func Register(r *gin.Engine, deps Deps) {
 		api.POST("/pages", authRequired, requirePermission(models.PermManagePages), pg.create)
 		api.PUT("/pages/:id", authRequired, requirePermission(models.PermManagePages), pg.update)
 		api.DELETE("/pages/:id", authRequired, requirePermission(models.PermManagePages), pg.delete)
+
+		// 统计中心 —— 一组 dashboard + 卡片,卡片执行只读 SQL,
+		// 通过 /api/pages 挂到导航上即可在首页看到。
+		RegisterDashboardRoutes(api, deps.DashStore, deps.Manager)
 
 		// 用户与角色管理 —— 仅 manage_users / manage_roles
 		api.GET("/admin-users", authRequired, requirePermission(models.PermManageUsers), listAdminUsers)

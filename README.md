@@ -18,6 +18,7 @@
 - **定时调度字段**：字段业务类型里提供「定时调度」，用户点选常用频率即可，落库存标准 cron 表达式；表格里点一下调度标签就能看接下来 5 次运行时间，既友好又不失机器可读。
 - **设置中心**：上传根目录 / 受管 SQLite 路径热更新；修改密码；Swagger UI 跳转。
   ![设置中心](docs/screenshots/settings.png)
+- **统计中心**：一组「卡片」的容器,每张卡片执行一条只读 SQL。卡片可以是**数字 / 表格**(单行单列→大数字;多行多列→紧凑表格)或**折线图**(X 轴列 + 多个 Y 轴数值列,图例可点击切换显隐,适合「最近 30 天天气变化」这类场景)。配置好的统计中心可以挂到底部导航的任意页面上,与逻辑模型共用同一套导航,SQL 服务端强制校验为只读 SELECT / WITH,强制 LIMIT 1000,自动忽略危险关键字与注释。
 - **日志模块（外部写入）**：面向外部系统暴露 `POST /api/logs`（Bearer Token 或 Session Cookie），调用方主动推送日志；Web UI 在线检索、过滤、分页、附带截图预览。**不会**自动记录本服务自身请求。
   ![日志管理](docs/screenshots/logs.png)
 
@@ -107,6 +108,7 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 ├── models/                       # 系统库 GORM 模型
 ├── logicmodels/                  # 逻辑模型存储 + 自动生成
 ├── pages/                        # 页面配置存储
+├── dashboards/                   # 统计中心:仪表盘容器 + 卡片 + SQL 安全校验
 ├── settings/                     # 设置 KV 存储
 ├── datadb/                       # 受管 SQLite 管理（动态加载 / 切换）
 ├── db/                           # 系统 SQLite 初始化、默认账号
@@ -124,6 +126,12 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 │   │   │   │   ├── HomeView.tsx       # 首页（一级 + 二级菜单、运行时）
 │   │   │   │   ├── BottomNav.tsx      # 一级菜单
 │   │   │   │   └── PagesList.tsx      # 页面配置列表
+│   │   │   ├── dashboards/            # 统计中心:卡片列表 / 编辑器 / 折线图 / SQL 预览
+│   │   │   │   ├── DashboardsList.tsx     # 统计中心容器列表
+│   │   │   │   ├── DashboardEditor.tsx    # 单个 dashboard 的卡片编辑 + 实时预览
+│   │   │   │   ├── CardEditorDialog.tsx   # 单张卡片的 SQL + 类型 + 渲染配置
+│   │   │   │   ├── DashboardView.tsx      # 运行时聚合页:并发执行卡片 SQL,按 kind 渲染
+│   │   │   │   └── LineChart.tsx          # 纯 SVG 折线图,图例点击切换显隐
 │   │   │   ├── db/                     # 受管库 CRUD（Dashboard / EditTableDialog / 等）
 │   │   │   ├── logicmodels/            # ModelRuntime 被 Dashboard 与 HomeView 复用
 │   │   │   │   ├── CronPicker.tsx      # 「定时调度」字段编辑器（预设 + 自定义 + 预览）
@@ -172,6 +180,29 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 
 后端对应提供 `GET /api/cron/next-runs?expr=...&count=5`：解析表达式并返回接下来 N 次运行时间（RFC3339，UTC），任何登录用户均可调用。
 
+### 统计中心 → 页面
+
+「统计中心」是一组**卡片**的容器，每张卡片执行一条只读 SQL 并按类型渲染。卡片与逻辑模型共用同一套页面导航——在「页面」里把页面关联到 `dashboard_id`，首页即渲染为聚合页。
+
+- **两种卡片**：
+  - `number` —— 单行单列展示为带单位/后缀的大数字（如「本月订单数 1,234 单」）；多行多列退化为紧凑表格，前 10 行。
+  - `line_chart` —— X 轴 1 列（时间或分类），Y 轴勾选多个数值列；图例点击切换序列显隐，纯 SVG 渲染。
+- **卡片配置 JSON**（`config` 字段，可选）：
+  - `unit` / `decimals`：number 卡片用；
+  - `x_column` / `y_columns`：line_chart 卡片用；
+  - `columns`：列名 → 展示名的别名映射，对两种卡片都生效。
+- **挂到导航**：在「页面」里编辑一个页面，把「关联模型」留空，改为「关联统计中心」选一个 dashboard，进入即看到聚合页。模型与 dashboard 二选一，不可同时设置。
+- **SQL 安全**：服务端 `dashboards.SanitizeSQL` 强制要求 SELECT / WITH 前缀，禁止 `;`、注释、`INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`CREATE`/`REPLACE`/`TRUNCATE`/`ATTACH`/`DETACH`/`VACUUM`/`REINDEX`/`GRANT`/`REVOKE`/`COPY`/`PRAGMA` 等关键字；执行时强制 `LIMIT 1000`，并用 `SELECT * FROM (<SQL>) AS mc_dash LIMIT 1000` 包一层，避免被用户写绕过。
+- **权限**：`view_dashboards` 用于查看统计中心与执行 SQL；`manage_dashboards` 用于新增/编辑/删除 dashboard 与卡片。
+- **完整 API**（节选）：
+  - `GET    /api/dashboards` —— 列出所有 dashboard；
+  - `POST   /api/dashboards` —— 新建容器（`{slug,label,icon,sort}`）；
+  - `GET    /api/dashboards/:id` —— 取一个 dashboard + 其全部卡片；
+  - `POST   /api/dashboards/:id/cards` —— 新增卡片；
+  - `PUT    /api/dashboards/:id/cards/:cardId` —— 更新卡片；
+  - `POST   /api/dashboards/:id/cards/:cardId/run` —— 执行卡片 SQL，返回 `{columns, rows, config, limit}`；
+  - 其余 CRUD 与图标列表见 `/swagger/`。
+
 ### 受管库切换
 
 `data/managed.db` 是默认受管库，但「设置中心」里的 `managed_db_path` 可改成任意本地 SQLite 文件，保存后立刻生效（无需重启）。系统库（`data/app.db`）始终存放账号、设置、逻辑模型、页面配置，与受管库隔离。
@@ -188,7 +219,8 @@ npm run dev                         # /api 代理到 http://127.0.0.1:8080
 | `/api/tables/*` | 受管库的表 / 列 / 行 CRUD、表结构、库状态 |
 | `/api/models/*` | 逻辑模型 CRUD + 自动生成（`/auto`、`/business-types`、`/tables`、`/tables/:name/schema`） |
 | `/api/runtime/:slug/*` | 逻辑模型自动生成的运行时 CRUD + schema |
-| `/api/pages*` | 页面配置 CRUD + 可用图标列表 |
+| `/api/pages*` | 页面配置 CRUD + 可用图标列表(可关联逻辑模型或统计中心) |
+| `/api/dashboards*` | 统计中心 CRUD + 卡片 CRUD + `/run` 只读执行卡片 SQL |
 | `/api/cron/next-runs` | 解析 cron 表达式并返回接下来 N 次运行时间（「定时调度」字段用） |
 | `/api/cronjobs/*` | 系统级 shell 定时任务 CRUD + 运行历史 / 日志 |
 | `/api/logs*` | 日志查询 / 新建 / 删除 / 清空 + 级别 / 来源 / 关键字过滤 + 图片附件 |

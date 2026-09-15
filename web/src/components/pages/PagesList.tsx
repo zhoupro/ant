@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import {
   createPage,
   deletePage,
+  listDashboards,
   listModels as listModelsApi,
   listPageIcons,
   listPages,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/api";
 import type { Page, PageInput } from "@/features/pages/types";
 import type { ModelSummary } from "@/features/logicmodels/types";
+import type { Dashboard } from "@/features/dashboards/types";
 import { cn } from "@/lib/utils";
 
 interface PagesListProps {
@@ -42,19 +44,22 @@ export function PagesList({
   const [editing, setEditing] = useState<Page | null>(null);
   const [creating, setCreating] = useState<{ parentId: string } | null>(null);
   const [models, setModels] = useState<ModelSummary[]>([]);
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [icons, setIcons] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, iconList, modelList] = await Promise.all([
+      const [list, iconList, modelList, dashboardList] = await Promise.all([
         listPages(),
         listPageIcons(),
         listModelsApi(),
+        listDashboards().catch(() => []),
       ]);
       setItems(list);
       setIcons(iconList);
       setModels(modelList);
+      setDashboards(dashboardList);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "加载失败");
       setItems([]);
@@ -115,7 +120,7 @@ export function PagesList({
           <Sparkles className="mx-auto mb-2 size-5 text-muted-foreground" />
           <p className="text-xs font-medium">还没有配置任何页面</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            新建一个页面,关联到逻辑模型,即可在底部导航栏里访问。
+            新建一个页面,关联到逻辑模型或统计中心,即可在底部导航栏里访问。
           </p>
         </div>
       ) : (
@@ -125,6 +130,7 @@ export function PagesList({
               <PageRow
                 page={node.page}
                 models={models}
+                dashboards={dashboards}
                 onOpen={() => onOpenPage?.(node.page)}
                 onEdit={() => setEditing(node.page)}
                 onDelete={() => void onDelete(node.page.id, node.page.label)}
@@ -137,6 +143,7 @@ export function PagesList({
                       <PageRow
                         page={child}
                         models={models}
+                        dashboards={dashboards}
                         onOpen={() => onOpenPage?.(child)}
                         onEdit={() => setEditing(child)}
                         onDelete={() => void onDelete(child.id, child.label)}
@@ -157,6 +164,7 @@ export function PagesList({
           initial={editing}
           parentId={creating?.parentId ?? editing?.parent_id ?? ""}
           models={models}
+          dashboards={dashboards}
           icons={icons}
           onClose={() => {
             setEditing(null);
@@ -176,6 +184,7 @@ export function PagesList({
 interface PageRowProps {
   page: Page;
   models: ModelSummary[];
+  dashboards: Dashboard[];
   onOpen?: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -185,12 +194,14 @@ interface PageRowProps {
 function PageRow({
   page,
   models,
+  dashboards,
   onOpen,
   onEdit,
   onDelete,
   onAddChild,
 }: PageRowProps) {
   const modelLabel = models.find((m) => m.slug === page.model_slug)?.label;
+  const dashLabel = dashboards.find((d) => d.id === page.dashboard_id)?.label;
   return (
     <div
       className={cn(
@@ -210,6 +221,11 @@ function PageRow({
         {page.model_slug ? (
           <span className="truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             → {modelLabel ?? page.model_slug}
+          </span>
+        ) : null}
+        {page.dashboard_id ? (
+          <span className="truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            ▦ {dashLabel ?? page.dashboard_id}
           </span>
         ) : null}
       </div>
@@ -264,6 +280,7 @@ interface PageEditorDialogProps {
   initial: Page | null;
   parentId: string;
   models: ModelSummary[];
+  dashboards: Dashboard[];
   icons: string[];
   onClose: () => void;
   onSaved: () => void;
@@ -274,6 +291,7 @@ function PageEditorDialog({
   initial,
   parentId,
   models,
+  dashboards,
   icons,
   onClose,
   onSaved,
@@ -283,6 +301,7 @@ function PageEditorDialog({
   const [label, setLabel] = useState(initial?.label ?? "");
   const [icon, setIcon] = useState(initial?.icon ?? "LayoutDashboard");
   const [modelSlug, setModelSlug] = useState(initial?.model_slug ?? "");
+  const [dashboardId, setDashboardId] = useState(initial?.dashboard_id ?? "");
   const [sort, setSort] = useState<string>(
     initial?.sort != null ? String(initial.sort) : "0",
   );
@@ -295,6 +314,7 @@ function PageEditorDialog({
     setLabel(initial?.label ?? "");
     setIcon(initial?.icon ?? "LayoutDashboard");
     setModelSlug(initial?.model_slug ?? "");
+    setDashboardId(initial?.dashboard_id ?? "");
     setSort(initial?.sort != null ? String(initial.sort) : "0");
     setError(null);
   }, [open, initial]);
@@ -309,6 +329,10 @@ function PageEditorDialog({
       setError("展示名不能为空");
       return;
     }
+    if (modelSlug && dashboardId) {
+      setError("逻辑模型与统计中心只能选一个");
+      return;
+    }
     setSubmitting(true);
     try {
       const input: PageInput = {
@@ -317,6 +341,7 @@ function PageEditorDialog({
         icon,
         parent_id: parentId,
         model_slug: modelSlug,
+        dashboard_id: dashboardId,
         sort: Number(sort) || 0,
       };
       if (isEdit && initial) {
@@ -340,7 +365,7 @@ function PageEditorDialog({
         if (!v) onClose();
       }}
       title={isEdit ? "编辑页面" : parentId ? "新建子页面" : "新建顶级页面"}
-      description="每个页面可关联一个逻辑模型,进入即展示其数据并支持增删改查与筛选"
+      description="每个页面可关联一个逻辑模型或一个统计中心,进入即展示其内容"
       size="md"
       footer={
         <>
@@ -384,13 +409,16 @@ function PageEditorDialog({
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">关联模型(可选)</label>
+            <label className="text-xs text-muted-foreground">关联模型</label>
             <select
               value={modelSlug}
-              onChange={(e) => setModelSlug(e.target.value)}
+              onChange={(e) => {
+                setModelSlug(e.target.value);
+                if (e.target.value) setDashboardId("");
+              }}
               className="h-8 w-full rounded-lg border bg-transparent px-2 text-sm"
             >
-              <option value="">不关联(仅作导航占位)</option>
+              <option value="">不关联</option>
               {models.map((m) => (
                 <option key={m.slug} value={m.slug}>
                   {m.label} ({m.slug})
@@ -399,14 +427,32 @@ function PageEditorDialog({
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">排序</label>
-            <Input
-              type="number"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="h-8 text-sm"
-            />
+            <label className="text-xs text-muted-foreground">关联统计中心</label>
+            <select
+              value={dashboardId}
+              onChange={(e) => {
+                setDashboardId(e.target.value);
+                if (e.target.value) setModelSlug("");
+              }}
+              className="h-8 w-full rounded-lg border bg-transparent px-2 text-sm"
+            >
+              <option value="">不关联</option>
+              {dashboards.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label} ({d.slug})
+                </option>
+              ))}
+            </select>
           </div>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">排序</label>
+          <Input
+            type="number"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            className="h-8 text-sm"
+          />
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">图标</label>

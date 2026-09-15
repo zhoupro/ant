@@ -38,6 +38,14 @@ import type {
 } from "@/features/logicmodels/types";
 import type { Page, PageInput } from "@/features/pages/types";
 import type {
+  CardRunResponse,
+  Dashboard,
+  DashboardCard,
+  DashboardCardInput,
+  DashboardDetail,
+  DashboardInput,
+} from "@/features/dashboards/types";
+import type {
   CreateLogInput,
   LogEntry,
   LogFacets,
@@ -452,6 +460,93 @@ export function deletePage(
 
 export function listPageIcons(): Promise<string[]> {
   return request<string[]>(`${PAGES_BASE}/icons`);
+}
+
+const DASHBOARDS_BASE = "/api/dashboards";
+
+export function listDashboards(): Promise<Dashboard[]> {
+  return request<Dashboard[]>(DASHBOARDS_BASE);
+}
+
+export function listDashboardIcons(): Promise<string[]> {
+  return request<string[]>(`${DASHBOARDS_BASE}/icons`);
+}
+
+export function getDashboard(id: string): Promise<DashboardDetail> {
+  return request<DashboardDetail>(`${DASHBOARDS_BASE}/${encodeURIComponent(id)}`);
+}
+
+export function createDashboard(input: DashboardInput): Promise<Dashboard> {
+  return request<Dashboard>(DASHBOARDS_BASE, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateDashboard(
+  id: string,
+  input: DashboardInput,
+): Promise<Dashboard> {
+  return request<Dashboard>(`${DASHBOARDS_BASE}/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteDashboard(id: string): Promise<{ ok: boolean; id: string }> {
+  return request<{ ok: boolean; id: string }>(
+    `${DASHBOARDS_BASE}/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function listDashboardCards(
+  dashboardId: string,
+): Promise<DashboardCard[]> {
+  return request<DashboardCard[]>(
+    `${DASHBOARDS_BASE}/${encodeURIComponent(dashboardId)}/cards`,
+  );
+}
+
+export function createDashboardCard(
+  dashboardId: string,
+  input: DashboardCardInput,
+): Promise<DashboardCard> {
+  return request<DashboardCard>(
+    `${DASHBOARDS_BASE}/${encodeURIComponent(dashboardId)}/cards`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function updateDashboardCard(
+  dashboardId: string,
+  cardId: string,
+  input: DashboardCardInput,
+): Promise<DashboardCard> {
+  return request<DashboardCard>(
+    `${DASHBOARDS_BASE}/${encodeURIComponent(dashboardId)}/cards/${encodeURIComponent(cardId)}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+export function deleteDashboardCard(
+  dashboardId: string,
+  cardId: string,
+): Promise<{ ok: boolean; id: string }> {
+  return request<{ ok: boolean; id: string }>(
+    `${DASHBOARDS_BASE}/${encodeURIComponent(dashboardId)}/cards/${encodeURIComponent(cardId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function runDashboardCard(
+  dashboardId: string,
+  cardId: string,
+): Promise<CardRunResponse> {
+  return request<CardRunResponse>(
+    `${DASHBOARDS_BASE}/${encodeURIComponent(dashboardId)}/cards/${encodeURIComponent(cardId)}/run`,
+    { method: "POST" },
+  );
 }
 
 const LOGS_BASE = "/api/logs";

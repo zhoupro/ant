@@ -68,6 +68,7 @@ func openAPISpec() gin.H {
 			{"name": "logic-models"},
 			{"name": "runtime"},
 {"name": "cron"},
+			{"name": "dashboards"},
 			{"name": "logs"},
 		},
 		"components": gin.H{
@@ -135,6 +136,12 @@ func schemas() gin.H {
 		"CronJobRunTrigger":    cronJobRunTriggerSchema(),
 		"CronJobLogSlice":      cronJobLogSliceSchema(),
 		"CronNextRuns":         cronNextRunsSchema(),
+		"Dashboard":            dashboardSchema(),
+		"DashboardDetail":      dashboardDetailSchema(),
+		"DashboardInput":       dashboardInputSchema(),
+		"DashboardCard":        dashboardCardSchema(),
+		"DashboardCardInput":   dashboardCardInputSchema(),
+		"DashboardCardRun":     dashboardCardRunSchema(),
 		"Log":                  logSchema(),
 		"LogImage":             logImageSchema(),
 		"LogListResponse":      logListResponseSchema(),
@@ -727,6 +734,7 @@ func buildPaths() gin.H {
 	addLogicModelsPaths(p)
 	addRuntimePaths(p)
 addCronPaths(p)
+	addDashboardPaths(p)
 	addLogsPaths(p)
 	return p
 }
@@ -1269,5 +1277,183 @@ func addLogsPaths(p gin.H) {
 		"parameters": []gin.H{{"name": "id", "in": "path", "required": true, "type": "integer"}},
 		"get": op("logs", "Get log entry", "Fetch a single log entry with attached images.", nil, []gin.H{okResp("Log entry."), errResp()}),
 		"delete": op("logs", "Delete log entry", "Delete one log entry and its image bindings.", nil, []gin.H{okResp("Deletion result."), errResp()}),
+	}
+}
+
+// --- Dashboard ----------------------------------------------------------------
+
+func dashboardSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"id":         gin.H{"type": "string"},
+			"slug":       gin.H{"type": "string"},
+			"label":      gin.H{"type": "string"},
+			"icon":       gin.H{"type": "string"},
+			"sort":       gin.H{"type": "integer"},
+			"created_at": gin.H{"type": "string", "format": "date-time"},
+			"updated_at": gin.H{"type": "string", "format": "date-time"},
+		},
+		"required": []string{"id", "slug", "label"},
+	}
+}
+
+func dashboardInputSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"slug":  gin.H{"type": "string", "description": "Unique slug, lowercase letters/digits/_/-."},
+			"label": gin.H{"type": "string", "description": "Display label."},
+			"icon":  gin.H{"type": "string", "description": "Optional lucide-react icon name."},
+			"sort":  gin.H{"type": "integer", "default": 0},
+		},
+		"required": []string{"slug", "label"},
+	}
+}
+
+func dashboardCardSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"id":           gin.H{"type": "string"},
+			"dashboard_id": gin.H{"type": "string"},
+			"title":        gin.H{"type": "string"},
+			"kind":         gin.H{"type": "string", "enum": []string{"number", "line_chart"}},
+			"sql":          gin.H{"type": "string"},
+			"config":       gin.H{"type": "string", "description": "JSON-encoded CardConfig."},
+			"sort":         gin.H{"type": "integer"},
+			"created_at":   gin.H{"type": "string", "format": "date-time"},
+			"updated_at":   gin.H{"type": "string", "format": "date-time"},
+		},
+		"required": []string{"id", "dashboard_id", "title", "kind", "sql"},
+	}
+}
+
+func dashboardCardInputSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"dashboard_id": gin.H{"type": "string"},
+			"title":        gin.H{"type": "string"},
+			"kind":         gin.H{"type": "string", "enum": []string{"number", "line_chart"}},
+			"sql":          gin.H{"type": "string", "description": "Read-only SQL; must start with SELECT or WITH."},
+			"config":       gin.H{"type": "string", "description": "JSON-encoded CardConfig (unit/decimals/x_column/y_columns/columns)."},
+			"sort":         gin.H{"type": "integer"},
+		},
+		"required": []string{"title", "kind", "sql"},
+	}
+}
+
+func dashboardCardRunSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"card_id": gin.H{"type": "string"},
+			"kind":    gin.H{"type": "string", "enum": []string{"number", "line_chart"}},
+			"config": gin.H{
+				"type": "object",
+				"description": "Parsed CardConfig for the card.",
+				"properties": gin.H{
+					"unit":     gin.H{"type": "string"},
+					"decimals": gin.H{"type": "integer"},
+					"x_column": gin.H{"type": "string"},
+					"y_columns": gin.H{
+						"type":  "array",
+						"items": gin.H{"type": "string"},
+					},
+					"columns": gin.H{
+						"type":                 "object",
+						"additionalProperties": gin.H{"type": "string"},
+					},
+				},
+			},
+			"columns": gin.H{
+				"type":  "array",
+				"items": gin.H{"type": "string"},
+			},
+			"rows": gin.H{
+				"type":  "array",
+				"items": gin.H{"type": "object", "additionalProperties": true},
+			},
+			"limit": gin.H{"type": "integer", "description": "Maximum rows returned by the server-enforced LIMIT."},
+		},
+		"required": []string{"card_id", "kind", "columns", "rows"},
+	}
+}
+
+func dashboardDetailSchema() gin.H {
+	return gin.H{
+		"type": "object",
+		"properties": gin.H{
+			"dashboard": gin.H{"$ref": "#/components/schemas/Dashboard"},
+			"cards":     gin.H{"type": "array", "items": gin.H{"$ref": "#/components/schemas/DashboardCard"}},
+		},
+		"required": []string{"dashboard", "cards"},
+	}
+}
+
+func addDashboardPaths(p gin.H) {
+	dashParam := []gin.H{{"name": "id", "in": "path", "required": true, "type": "string"}}
+	cardParam := []gin.H{{"name": "cardId", "in": "path", "required": true, "type": "string"}}
+
+	p["/api/dashboards"] = gin.H{
+		"get": op("dashboards", "List dashboards", "List configured dashboards (a dashboard is a container of cards that can be mounted on a page).", nil, []gin.H{
+			{"code": "200", "desc": "Dashboard list.", "schema": gin.H{
+				"type": "array", "items": gin.H{"$ref": "#/components/schemas/Dashboard"},
+			}},
+			errResp(),
+		}),
+		"post": op("dashboards", "Create dashboard", "Create a new dashboard container.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/DashboardInput"}},
+		}, []gin.H{
+			{"code": "200", "desc": "The created dashboard.", "schema": gin.H{"$ref": "#/components/schemas/Dashboard"}},
+			errResp(),
+		}),
+	}
+	p["/api/dashboards/{id}"] = gin.H{
+		"parameters": dashParam,
+		"get": op("dashboards", "Get dashboard", "Fetch a dashboard with all of its cards.", nil, []gin.H{
+			{"code": "200", "desc": "Dashboard + cards.", "schema": gin.H{"$ref": "#/components/schemas/DashboardDetail"}},
+			errResp(),
+		}),
+		"put": op("dashboards", "Update dashboard", "Update slug / label / icon / sort.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/DashboardInput"}},
+		}, []gin.H{
+			{"code": "200", "desc": "The updated dashboard.", "schema": gin.H{"$ref": "#/components/schemas/Dashboard"}},
+			errResp(),
+		}),
+		"delete": op("dashboards", "Delete dashboard", "Delete the dashboard and all of its cards.", nil, []gin.H{okResp("Deletion result."), errResp()}),
+	}
+	p["/api/dashboards/{id}/cards"] = gin.H{
+		"parameters": dashParam,
+		"get": op("dashboards", "List dashboard cards", "List all cards of a dashboard.", nil, []gin.H{
+			{"code": "200", "desc": "Card list.", "schema": gin.H{
+				"type": "array", "items": gin.H{"$ref": "#/components/schemas/DashboardCard"},
+			}},
+			errResp(),
+		}),
+		"post": op("dashboards", "Create dashboard card", "Create a new card within the dashboard.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/DashboardCardInput"}},
+		}, []gin.H{
+			{"code": "200", "desc": "The created card.", "schema": gin.H{"$ref": "#/components/schemas/DashboardCard"}},
+			errResp(),
+		}),
+	}
+	p["/api/dashboards/{id}/cards/{cardId}"] = gin.H{
+		"parameters": append([]gin.H{}, append(dashParam, cardParam...)...),
+		"put": op("dashboards", "Update dashboard card", "Update an existing card.", []gin.H{
+			{"name": "body", "in": "body", "required": true, "schema": gin.H{"$ref": "#/components/schemas/DashboardCardInput"}},
+		}, []gin.H{
+			{"code": "200", "desc": "The updated card.", "schema": gin.H{"$ref": "#/components/schemas/DashboardCard"}},
+			errResp(),
+		}),
+		"delete": op("dashboards", "Delete dashboard card", "Delete a single card.", nil, []gin.H{okResp("Deletion result."), errResp()}),
+	}
+	p["/api/dashboards/{id}/cards/{cardId}/run"] = gin.H{
+		"parameters": append([]gin.H{}, append(dashParam, cardParam...)...),
+		"post": op("dashboards", "Run card SQL", "Execute the card's SQL against the managed database. The SQL is sanitized server-side: must be a single SELECT (or WITH ... SELECT) statement, no comments, no DDL/DML keywords. Results are capped at 1000 rows.", nil, []gin.H{
+			{"code": "200", "desc": "Run result with rows + columns + parsed config.", "schema": gin.H{"$ref": "#/components/schemas/DashboardCardRun"}},
+			errResp(),
+		}),
 	}
 }

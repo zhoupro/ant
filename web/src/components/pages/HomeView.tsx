@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { listPages } from "@/lib/api";
+import { getDashboard, listPages } from "@/lib/api";
 import { ModelRuntime } from "@/components/logicmodels/ModelRuntime";
+import { DashboardView } from "@/components/dashboards/DashboardView";
 import { PagesList } from "./PagesList";
 import { BottomNav } from "./BottomNav";
 import type { Page } from "@/features/pages/types";
+import type { DashboardDetail } from "@/features/dashboards/types";
 import { renderIcon } from "@/features/pages/icon";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +21,9 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [secondaryOpen, setSecondaryOpen] = useState(false);
+  const [dashboardDetail, setDashboardDetail] =
+    useState<DashboardDetail | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -42,6 +47,31 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
   }, [refresh]);
 
   const active = pages.find((p) => p.id === activeId) ?? null;
+
+  // 当前激活的页面挂的是 dashboard 时,拉一次详情;
+  // activeId 变化或页面配置变更时重新拉。
+  useEffect(() => {
+    if (!active?.dashboard_id) {
+      setDashboardDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setDashboardLoading(true);
+    void getDashboard(active.dashboard_id)
+      .then((d) => {
+        if (!cancelled) setDashboardDetail(d);
+      })
+      .catch(() => {
+        if (!cancelled) setDashboardDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDashboardLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.dashboard_id]);
+
   const topLevel = useMemo(
     () => pages.filter((p) => !p.parent_id).sort((a, b) => a.sort - b.sort),
     [pages],
@@ -120,16 +150,35 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
               hideHeader
             />
           </div>
+        ) : active.dashboard_id ? (
+          <div className="p-3">
+            {dashboardLoading ? (
+              <p className="rounded-lg border border-dashed bg-muted/30 p-6 text-center text-xs text-muted-foreground">
+                加载中…
+              </p>
+            ) : dashboardDetail ? (
+              <DashboardView detail={dashboardDetail} />
+            ) : (
+              <div className="rounded-lg border border-dashed bg-muted/30 p-6 text-center">
+                <p className="text-sm font-medium">
+                  <code className="font-mono">/{active.slug}</code> 关联的统计中心不存在
+                </p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  到底部导航的「页面」标签里编辑此页,重新选择一个有效的统计中心。
+                </p>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-3 p-4">
             <div className="rounded-lg border border-dashed bg-muted/30 p-6 text-center">
               <p className="text-sm font-medium">
-                <code className="font-mono">/{active.slug}</code> 没有关联逻辑模型
+                <code className="font-mono">/{active.slug}</code> 没有关联内容
               </p>
               <p className="mt-2 text-[11px] text-muted-foreground">
                 {subPages.length > 0
                   ? "下方有子页面,点一下试试 —— 通常父页只做导航,数据在子页里。"
-                  : "到底部导航的「页面」标签里编辑此页,关联一个逻辑模型,即可显示数据表格。"}
+                  : "到底部导航的「页面」标签里编辑此页,关联一个逻辑模型或统计中心。"}
               </p>
             </div>
             {topLevel.length > 0 ? (
@@ -165,7 +214,7 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
             setSecondaryOpen((prev) => !prev);
             return;
           }
-          if (!p.model_slug) {
+          if (!p.model_slug && !p.dashboard_id) {
             return;
           }
           setActiveId(p.id);

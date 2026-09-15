@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"mc/cronjobs"
+	"mc/dashboards"
 	"mc/datadb"
 	"mc/db"
 	"mc/handlers"
@@ -78,6 +79,7 @@ func main() {
 
 	lmStore := logicmodels.NewStore(mgr)
 	pagesStore := pages.NewStore(mgr)
+	dashStore := dashboards.NewStore(mgr)
 
 	cronStore := cronjobs.NewStore()
 	cronRunner, err := cronjobs.NewRunner(filepath.Join("data", "cron-logs"))
@@ -108,6 +110,7 @@ func main() {
 		Manager:     mgr,
 		LMStore:     lmStore,
 		PagesStore:  pagesStore,
+		DashStore:   dashStore,
 		CronStore:   cronStore,
 		CronRunner:  cronRunner,
 		CronSched:   cronScheduler,
