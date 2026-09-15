@@ -48,6 +48,11 @@ interface ModelRuntimeProps {
   onEdit?: () => void;
   onDeleted: () => void;
   hideHeader?: boolean;
+  // When true, the runtime only allows viewing: no insert/update/delete
+  // buttons are rendered and the model cannot be deleted. Used for
+  // system-managed tables (logic_models, pages) whose schema is owned
+  // by the application itself.
+  readOnly?: boolean;
 }
 
 const PAGE_SIZE_DEFAULT = 50;
@@ -58,6 +63,7 @@ export function ModelRuntime({
   onEdit,
   onDeleted,
   hideHeader = false,
+  readOnly = false,
 }: ModelRuntimeProps) {
   const [schema, setSchema] = useState<RuntimeSchema | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -264,16 +270,18 @@ export function ModelRuntime({
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {onEdit ? (
+            {onEdit && !readOnly ? (
               <Button size="sm" variant="outline" onClick={onEdit}>
                 <Pencil className="size-3.5" />
                 编辑模型
               </Button>
             ) : null}
-            <Button size="sm" variant="ghost" onClick={() => void handleDeleteModel()}>
-              <Trash2 className="size-3.5 text-destructive" />
-              删除模型
-            </Button>
+            {readOnly ? null : (
+              <Button size="sm" variant="ghost" onClick={() => void handleDeleteModel()}>
+                <Trash2 className="size-3.5 text-destructive" />
+                删除模型
+              </Button>
+            )}
           </div>
         </div>
       ) : null}
@@ -359,10 +367,12 @@ export function ModelRuntime({
             </Button>
           </div>
         </div>
-        <Button size="sm" onClick={() => setInsertOpen(true)}>
-          <Plus className="size-3.5" />
-          新增记录
-        </Button>
+        {readOnly ? null : (
+          <Button size="sm" onClick={() => setInsertOpen(true)}>
+            <Plus className="size-3.5" />
+            新增记录
+          </Button>
+        )}
       </div>
 
       {error ? (
@@ -421,7 +431,9 @@ export function ModelRuntime({
                   </th>
                 );
               })}
-              <th className="border-b px-3 py-2 text-right font-medium">操作</th>
+              {readOnly ? null : (
+                <th className="border-b px-3 py-2 text-right font-medium">操作</th>
+              )}
             </tr>
             <tr>
               {visibleFields.map((f) => (
@@ -513,14 +525,14 @@ export function ModelRuntime({
                   )}
                 </th>
               ))}
-              <th className="border-b bg-muted/60" />
+              {readOnly ? null : <th className="border-b bg-muted/60" />}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td
-                  colSpan={visibleFields.length + 1}
+                  colSpan={visibleFields.length + (readOnly ? 0 : 1)}
                   className="px-3 py-8 text-center text-xs text-muted-foreground"
                 >
                   加载中…
@@ -529,7 +541,7 @@ export function ModelRuntime({
             ) : !rows || rows.items.length === 0 ? (
               <tr>
                 <td
-                  colSpan={visibleFields.length + 1}
+                  colSpan={visibleFields.length + (readOnly ? 0 : 1)}
                   className="px-3 py-8 text-center text-xs text-muted-foreground"
                 >
                   没有数据
@@ -557,30 +569,32 @@ export function ModelRuntime({
                       </td>
                     ))}
                     <td className="border-b px-3 py-1.5 text-right">
-                      <div className="inline-flex gap-1">
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          aria-label="编辑"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditing({ pk, row: r });
-                          }}
-                        >
-                          <Pencil className="size-3" />
-                        </Button>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          aria-label="删除"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void onDelete(pk);
-                          }}
-                        >
-                          <Trash2 className="size-3 text-destructive" />
-                        </Button>
-                      </div>
+                      {readOnly ? null : (
+                        <div className="inline-flex gap-1">
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            aria-label="编辑"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditing({ pk, row: r });
+                            }}
+                          >
+                            <Pencil className="size-3" />
+                          </Button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            aria-label="删除"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void onDelete(pk);
+                            }}
+                          >
+                            <Trash2 className="size-3 text-destructive" />
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -678,6 +692,7 @@ export function ModelRuntime({
         loading={detailLoading}
         data={detailData}
         schema={schema}
+        readOnly={readOnly}
         onEditFromDetail={() => {
           if (!detail || !detailData) return;
           setEditing({ pk: detail.pk, row: detailData.row });
@@ -816,6 +831,7 @@ interface RowDetailDialogProps {
   data: { row: Record<string, unknown>; relations: ExpandedRow[] } | null;
   schema: RuntimeSchema;
   onEditFromDetail: () => void;
+  readOnly?: boolean;
 }
 
 function RowDetailDialog({
@@ -825,6 +841,7 @@ function RowDetailDialog({
   data,
   schema,
   onEditFromDetail,
+  readOnly,
 }: RowDetailDialogProps) {
   const rootTable = schema.tables.find((t) => t.alias === schema.root_alias);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -842,10 +859,12 @@ function RowDetailDialog({
             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
               关闭
             </Button>
-            <Button type="button" onClick={onEditFromDetail} disabled={!data}>
-              <Pencil className="size-3.5" />
-              编辑
-            </Button>
+            {readOnly ? null : (
+              <Button type="button" onClick={onEditFromDetail} disabled={!data}>
+                <Pencil className="size-3.5" />
+                编辑
+              </Button>
+            )}
           </>
         }
       >

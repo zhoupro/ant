@@ -36,6 +36,29 @@ type Column struct {
 	Default    string `json:"default,omitempty"`
 }
 
+// TableInfo describes a single physical table surfaced in the dashboard.
+// `System` is true for tables whose schema is owned by the application
+// itself (e.g. logic_models, pages); they cannot be edited or dropped
+// through the generic table API.
+type TableInfo struct {
+	Name   string `json:"name"`
+	System bool   `json:"system"`
+}
+
+// rejectSystemTable short-circuits any mutation against a system-managed
+// table. Returns true when the handler should abort (already wrote the
+// response).
+func rejectSystemTable(c *gin.Context, table string) bool {
+	if !datadb.IsSystemTable(table) {
+		return false
+	}
+	c.JSON(http.StatusForbidden, gin.H{
+		"error":  "系统表不允许修改",
+		"reason": fmt.Sprintf("表 %q 由系统管理,仅可查看", table),
+	})
+	return true
+}
+
 func validateIdent(name string) error {
 	if !identifierRe.MatchString(name) {
 		return fmt.Errorf("非法标识符: %q", name)
@@ -72,11 +95,17 @@ func (h *TablesHandler) list(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	names := make([]string, 0, len(rows))
+	tables := make([]TableInfo, 0, len(rows))
 	for _, r := range rows {
-		names = append(names, r.Name)
+		if r.Name == "" {
+			continue
+		}
+		tables = append(tables, TableInfo{
+			Name:   r.Name,
+			System: datadb.IsSystemTable(r.Name),
+		})
 	}
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"tables": names}})
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"tables": tables}})
 }
 
 func (h *TablesHandler) schema(c *gin.Context) {
@@ -274,6 +303,9 @@ func (h *TablesHandler) insert(c *gin.Context) {
 		return
 	}
 	table := c.Param("name")
+	if rejectSystemTable(c, table) {
+		return
+	}
 	if err := validateIdent(table); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -331,6 +363,9 @@ func (h *TablesHandler) update(c *gin.Context) {
 		return
 	}
 	table := c.Param("name")
+	if rejectSystemTable(c, table) {
+		return
+	}
 	if err := validateIdent(table); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -390,6 +425,9 @@ func (h *TablesHandler) delete(c *gin.Context) {
 		return
 	}
 	table := c.Param("name")
+	if rejectSystemTable(c, table) {
+		return
+	}
 	if err := validateIdent(table); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -506,6 +544,9 @@ func (h *TablesHandler) drop(c *gin.Context) {
 		return
 	}
 	table := c.Param("name")
+	if rejectSystemTable(c, table) {
+		return
+	}
 	if err := validateIdent(table); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -532,6 +573,9 @@ func (h *TablesHandler) addColumn(c *gin.Context) {
 		return
 	}
 	table := c.Param("name")
+	if rejectSystemTable(c, table) {
+		return
+	}
 	if err := validateIdent(table); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -573,6 +617,9 @@ func (h *TablesHandler) dropColumn(c *gin.Context) {
 		return
 	}
 	table := c.Param("name")
+	if rejectSystemTable(c, table) {
+		return
+	}
 	column := c.Param("column")
 	if err := validateIdent(table); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -621,6 +668,9 @@ func (h *TablesHandler) alterColumn(c *gin.Context) {
 		return
 	}
 	table := c.Param("name")
+	if rejectSystemTable(c, table) {
+		return
+	}
 	oldName := c.Param("column")
 	if err := validateIdent(table); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

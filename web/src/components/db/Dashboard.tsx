@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, Lock, Pencil, Plus, RefreshCw, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   listTables,
   saveModel,
 } from "@/lib/api";
-import type { DBStatus } from "@/features/db/types";
+import type { DBStatus, TableInfo } from "@/features/db/types";
 
 import {
   CreateTableDialog,
@@ -30,7 +30,7 @@ interface DashboardProps {
 
 export function Dashboard({ onGoToSettings }: DashboardProps) {
   const [status, setStatus] = useState<DBStatus | null>(null);
-  const [tables, setTables] = useState<string[]>([]);
+  const [tables, setTables] = useState<TableInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -60,8 +60,9 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
     try {
       const r = await listTables();
       setTables(r.tables);
-      if (active && !r.tables.includes(active)) setActive(null);
-      if (activeSlug && !r.tables.includes(activeSlug.split("auto_")[1])) {
+      const names = r.tables.map((t) => t.name);
+      if (active && !names.includes(active)) setActive(null);
+      if (activeSlug && !names.includes(activeSlug.split("auto_")[1])) {
         // keep the activeSlug if the table still exists
       }
     } catch (err) {
@@ -78,6 +79,11 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
   useEffect(() => {
     if (status?.loaded) void refreshTables();
   }, [status?.loaded, refreshTables]);
+
+  const activeTable = useMemo(
+    () => tables.find((t) => t.name === active) ?? null,
+    [tables, active],
+  );
 
   const handleDropTable = async (name: string) => {
     if (!confirm(`确定删除表 "${name}" 吗?此操作不可恢复`)) return;
@@ -203,34 +209,53 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
                 <ul className="space-y-0.5">
                   {tables.map((t) => (
                     <li
-                      key={t}
-                      className={`flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-muted ${active === t ? "bg-muted" : ""}`}
+                      key={t.name}
+                      className={`flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-muted ${active === t.name ? "bg-muted" : ""}`}
                     >
                       <button
                         type="button"
                         className="flex flex-1 items-center gap-1.5 truncate text-left"
-                        onClick={() => void handleSelectTable(t)}
+                        onClick={() => void handleSelectTable(t.name)}
                       >
-                        <Table2 className="size-3.5 text-muted-foreground" />
-                        <span className="truncate">{t}</span>
+                        {t.system ? (
+                          <Lock
+                            className="size-3.5 text-muted-foreground"
+                            aria-label="系统表"
+                          />
+                        ) : (
+                          <Table2 className="size-3.5 text-muted-foreground" />
+                        )}
+                        <span className="truncate">{t.name}</span>
+                        {t.system ? (
+                          <span
+                            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                            title="系统表,仅可查看"
+                          >
+                            系统
+                          </span>
+                        ) : null}
                       </button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => setStructureFor(t)}
-                        aria-label={`编辑表结构 ${t}`}
-                        title="编辑表结构"
-                      >
-                        <Pencil className="size-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => void handleDropTable(t)}
-                        aria-label="删除表"
-                      >
-                        <Trash2 className="size-3 text-destructive" />
-                      </Button>
+                      {t.system ? null : (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => setStructureFor(t.name)}
+                            aria-label={`编辑表结构 ${t.name}`}
+                            title="编辑表结构"
+                          >
+                            <Pencil className="size-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => void handleDropTable(t.name)}
+                            aria-label="删除表"
+                          >
+                            <Trash2 className="size-3 text-destructive" />
+                          </Button>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -248,12 +273,13 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
         ) : active && activeSlug ? (
           <ModelRuntime
             slug={activeSlug}
+            readOnly={activeTable?.system ?? false}
             onBack={() => {
               setActive(null);
               setActiveSlug(null);
             }}
             onEdit={() => {
-              if (active) setStructureFor(active);
+              if (active && !activeTable?.system) setStructureFor(active);
             }}
             onDeleted={() => {
               setActive(null);

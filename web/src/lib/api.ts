@@ -24,6 +24,7 @@ import type {
   DBStatus,
   RowInput,
   RowsResponse,
+  TableInfo,
 } from "@/features/db/types";
 import type {
   BusinessTypeInfo,
@@ -181,8 +182,8 @@ export function getDBStatus(): Promise<DBStatus> {
   return request<DBStatus>(`${DB_BASE}/status`);
 }
 
-export function listTables(): Promise<{ tables: string[] }> {
-  return request<{ tables: string[] }>(`${TABLES_BASE}`);
+export function listTables(): Promise<{ tables: TableInfo[] }> {
+  return request<{ tables: TableInfo[] }>(`${TABLES_BASE}`);
 }
 
 export function getTableSchema(

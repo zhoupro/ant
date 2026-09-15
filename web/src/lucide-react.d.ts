@@ -47,6 +47,7 @@ declare module "lucide-react" {
   export const Layout: LucideIcon;
   export const Loader2: LucideIcon;
   export const Loader2Icon: LucideIcon;
+  export const Lock: LucideIcon;
   export const LogOut: LucideIcon;
   export const OctagonXIcon: LucideIcon;
   export const Pause: LucideIcon;

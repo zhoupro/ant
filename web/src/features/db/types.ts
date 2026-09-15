@@ -15,6 +15,15 @@ export interface DBStatus {
   error?: string;
 }
 
+// A physical table surfaced in the dashboard sidebar.
+// `system` is true for tables whose schema is owned by the
+// application itself (e.g. logic_models, pages); they cannot be
+// edited or dropped through the generic table API.
+export interface TableInfo {
+  name: string;
+  system: boolean;
+}
+
 export interface RowsResponse {
   columns: Column[];
   rows: Record<string, unknown>[];
