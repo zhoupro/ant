@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Pause,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Search,
@@ -50,6 +52,11 @@ export function TableView({ tableName, onMutated }: TableViewProps) {
     row: Record<string, unknown>;
   } | null>(null);
   const [addColOpen, setAddColOpen] = useState(false);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState(30);
+  const [autoRefreshInput, setAutoRefreshInput] = useState("30");
+  const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(0);
+  const autoRefreshTickRef = useRef<number | null>(null);
 
   const refreshSchema = useCallback(async () => {
     try {
@@ -90,6 +97,33 @@ export function TableView({ tableName, onMutated }: TableViewProps) {
   useEffect(() => {
     void refreshRows();
   }, [refreshRows]);
+
+  useEffect(() => {
+    if (!autoRefreshEnabled || autoRefreshSeconds <= 0) {
+      if (autoRefreshTickRef.current !== null) {
+        window.clearInterval(autoRefreshTickRef.current);
+        autoRefreshTickRef.current = null;
+      }
+      setSecondsUntilRefresh(0);
+      return;
+    }
+    setSecondsUntilRefresh(autoRefreshSeconds);
+    autoRefreshTickRef.current = window.setInterval(() => {
+      setSecondsUntilRefresh((prev) => {
+        if (prev <= 1) {
+          void refreshRows();
+          return autoRefreshSeconds;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => {
+      if (autoRefreshTickRef.current !== null) {
+        window.clearInterval(autoRefreshTickRef.current);
+        autoRefreshTickRef.current = null;
+      }
+    };
+  }, [autoRefreshEnabled, autoRefreshSeconds, refreshRows]);
 
   const total = data?.total ?? 0;
   const pageStart = total === 0 ? 0 : offset + 1;
@@ -172,6 +206,52 @@ export function TableView({ tableName, onMutated }: TableViewProps) {
             <RefreshCw className="size-3.5" />
             刷新
           </Button>
+          <div className="inline-flex items-center gap-1">
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={autoRefreshInput}
+              onChange={(e) => {
+                const v = e.target.value;
+                setAutoRefreshInput(v);
+                const n = Number.parseInt(v, 10);
+                if (Number.isFinite(n) && n > 0) {
+                  setAutoRefreshSeconds(n);
+                  if (autoRefreshEnabled) setSecondsUntilRefresh(n);
+                }
+              }}
+              onBlur={() => {
+                const n = Number.parseInt(autoRefreshInput, 10);
+                if (!Number.isFinite(n) || n < 1) {
+                  setAutoRefreshInput(String(autoRefreshSeconds));
+                }
+              }}
+              className="h-7 w-16 px-2 text-xs"
+              aria-label="自动刷新秒数"
+              title="自动刷新秒数"
+            />
+            <span className="text-[10px] text-muted-foreground">秒</span>
+            <Button
+              variant={autoRefreshEnabled ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAutoRefreshEnabled((v) => !v)}
+              aria-label={autoRefreshEnabled ? "停止自动刷新" : "开启自动刷新"}
+              title={autoRefreshEnabled ? "停止自动刷新" : "开启自动刷新"}
+            >
+              {autoRefreshEnabled ? (
+                <>
+                  <Pause className="size-3.5" />
+                  {secondsUntilRefresh}s
+                </>
+              ) : (
+                <>
+                  <Play className="size-3.5" />
+                  自动
+                </>
+              )}
+            </Button>
+          </div>
           <Button size="sm" onClick={() => setInsertOpen(true)}>
             <Plus className="size-3.5" />
             新增记录
