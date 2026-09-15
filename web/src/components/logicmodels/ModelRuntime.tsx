@@ -794,6 +794,13 @@ function summarize(v: unknown): string {
   return s.length > 80 ? s.slice(0, 77) + "…" : s;
 }
 
+function defaultHint(field: RuntimeField): string | undefined {
+  const d = field.default;
+  if (!d) return undefined;
+  if (d === "now") return "留空将自动填充当前时间";
+  return `默认：${d}`;
+}
+
 function optionLabel(options: SelectOption[] | undefined, value: unknown): string | null {
   if (!options || value === null || value === undefined) return null;
   const v = String(value);
@@ -1465,6 +1472,7 @@ function FieldInput({
             type="datetime-local"
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            placeholder={defaultHint(field)}
             className="h-8"
           />
         </div>
@@ -1477,6 +1485,7 @@ function FieldInput({
             type="date"
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            placeholder={defaultHint(field)}
             className="h-8"
           />
         </div>

@@ -37,6 +37,9 @@ type FieldConfig struct {
 	Sort         int            `json:"sort"`
 	Placeholder  string         `json:"placeholder,omitempty"`
 	Options      []SelectOption `json:"options,omitempty"`
+	// Default 仅对 date / datetime 业务类型生效。空 = 无默认；
+	// "now" = 插入时取当前时间；其它字符串视作固定时间字面量。
+	Default string `json:"default,omitempty"`
 }
 
 type SelectOption struct {
@@ -251,6 +254,9 @@ func validateConfig(cfg *ModelConfig) error {
 			if (f.BusinessType == "select" || f.BusinessType == "multiselect") && len(f.Options) == 0 {
 				return fmt.Errorf("表 %s 字段 %s 使用 %s 时必须配置选项", t.Alias, f.Key, f.BusinessType)
 			}
+			if err := validateFieldDefault(f.BusinessType, f.Default); err != nil {
+				return fmt.Errorf("表 %s 字段 %s: %s", t.Alias, f.Key, err.Error())
+			}
 		}
 	}
 	if cfg.RootAlias == "" {
@@ -289,6 +295,64 @@ func BusinessTypes() []string {
 		"image", "images", "file", "json", "richtext", "select", "multiselect",
 		"url", "email", "phone", "color", "cron",
 	}
+}
+
+// DefaultSentinelNow 是「当前时间」默认值的约定值。
+const DefaultSentinelNow = "now"
+
+// HasDefault 判断字段是否在 insert 时应自动填充默认值。
+// 当前仅 date / datetime 支持。
+func HasDefault(bt, def string) bool {
+	if def == "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(bt)) {
+	case "date", "datetime":
+		return true
+	}
+	return false
+}
+
+// ResolveDefaultValue 把字段 default 配置转换成落库值。
+// 支持 "now"（取当前时间）和固定时间字面量。
+// 调用前请先用 HasDefault 判断是否需要默认。
+func ResolveDefaultValue(bt, def string) any {
+	if def == DefaultSentinelNow {
+		now := time.Now()
+		if strings.ToLower(strings.TrimSpace(bt)) == "date" {
+			return now.Format("2006-01-02")
+		}
+		return now.Format("2006-01-02 15:04:05")
+	}
+	return def
+}
+
+func validateFieldDefault(bt, def string) error {
+	if def == "" {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(bt)) {
+	case "date":
+		if def == DefaultSentinelNow {
+			return nil
+		}
+		if _, err := time.Parse("2006-01-02", def); err != nil {
+			return fmt.Errorf("日期默认值格式错误,应为 YYYY-MM-DD")
+		}
+	case "datetime":
+		if def == DefaultSentinelNow {
+			return nil
+		}
+		if _, err := time.Parse("2006-01-02 15:04:05", def); err != nil {
+			if _, err2 := time.Parse("2006-01-02T15:04", def); err2 == nil {
+				return nil
+			}
+			return fmt.Errorf("日期时间默认值格式错误,应为 YYYY-MM-DD HH:MM:SS")
+		}
+	default:
+		return fmt.Errorf("仅 date / datetime 支持默认值")
+	}
+	return nil
 }
 
 func IsValidBusinessType(t string) bool {

@@ -46,6 +46,7 @@ type runtimeField struct {
 	Sort         int                      `json:"sort"`
 	Placeholder  string                   `json:"placeholder,omitempty"`
 	Options      []logicmodels.SelectOption `json:"options,omitempty"`
+	Default      string                   `json:"default,omitempty"`
 }
 
 type runtimeTable struct {
@@ -172,6 +173,7 @@ func (h *RuntimeHandler) schema(c *gin.Context) {
 				Sort:         f.Sort,
 				Placeholder:  f.Placeholder,
 				Options:      f.Options,
+				Default:      f.Default,
 			})
 		}
 		sort.SliceStable(rt.Fields, func(i, j int) bool {
@@ -320,6 +322,7 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 			"sort":          f.Sort,
 			"placeholder":   f.Placeholder,
 			"options":       f.Options,
+			"default":       f.Default,
 		})
 	}
 
@@ -711,8 +714,43 @@ func (h *RuntimeHandler) insert(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("字段 %s: %s", f.Label, err.Error())})
 			return
 		}
-		if coerced == nil && f.Required {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("字段 %s 必填", f.Label)})
+		if coerced == nil {
+			if f.Required {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("字段 %s 必填", f.Label)})
+				return
+			}
+			continue
+		}
+		columns = append(columns, quoteCol(f.Physical))
+		placeholders = append(placeholders, "?")
+		args = append(args, coerced)
+	}
+	// date / datetime 字段未提供值时,按 default 兜底:
+	// "" = 不兜底；"now" = 当前时间；其它 = 固定时间字面量。
+	for _, f := range root.Fields {
+		if !f.Editable {
+			continue
+		}
+		if !physicalColSet[f.Physical] {
+			continue
+		}
+		if !logicmodels.HasDefault(f.BusinessType, f.Default) {
+			continue
+		}
+		alreadySet := false
+		for _, col := range columns {
+			if col == quoteCol(f.Physical) {
+				alreadySet = true
+				break
+			}
+		}
+		if alreadySet {
+			continue
+		}
+		val := logicmodels.ResolveDefaultValue(f.BusinessType, f.Default)
+		coerced, err := coerceValue(val, f)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("字段 %s 默认值: %s", f.Label, err.Error())})
 			return
 		}
 		if coerced == nil {

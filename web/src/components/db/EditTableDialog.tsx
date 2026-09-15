@@ -59,7 +59,9 @@ function inferBusinessType(sqlType: string): BusinessType {
   }
   if (t.includes("BOOL")) return "boolean";
   if (t.includes("BLOB")) return "file";
-  if (t.includes("DATE") || t.includes("TIME")) return "text";
+  if (t.includes("DATETIME") || t.includes("TIMESTAMP")) return "datetime";
+  if (t.includes("DATE")) return "date";
+  if (t.includes("TIME")) return "datetime";
   if (t.includes("JSON")) return "json";
   return "text";
 }

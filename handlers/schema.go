@@ -70,8 +70,12 @@ func inferBusinessType(colType string) string {
 		return "number"
 	case strings.Contains(t, "BOOL"):
 		return "boolean"
-	case strings.Contains(t, "DATE"), strings.Contains(t, "TIME"):
-		return "text"
+	case strings.Contains(t, "DATETIME"), strings.Contains(t, "TIMESTAMP"):
+		return "datetime"
+	case strings.Contains(t, "DATE"):
+		return "date"
+	case strings.Contains(t, "TIME"):
+		return "datetime"
 	case strings.Contains(t, "JSON"):
 		return "json"
 	case strings.Contains(t, "BLOB"):

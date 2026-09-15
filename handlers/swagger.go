@@ -365,6 +365,10 @@ func fieldConfigSchema() gin.H {
 					},
 				},
 			},
+			"default": gin.H{
+				"type":        "string",
+				"description": "Default value for date / datetime fields. Empty = no default; \"now\" = current time; otherwise a literal date / datetime string.",
+			},
 		},
 		"required": []string{"key", "physical", "label", "business_type"},
 	}
@@ -533,6 +537,7 @@ func runtimeFieldSchema() gin.H {
 			"sort":          gin.H{"type": "integer"},
 			"placeholder":   gin.H{"type": "string"},
 			"options":       gin.H{"type": "array", "items": gin.H{"type": "object"}},
+			"default":       gin.H{"type": "string", "description": "Default value for date / datetime fields."},
 		},
 	}
 }

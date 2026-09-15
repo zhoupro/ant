@@ -193,6 +193,15 @@ export function FieldEditorRow({
               className="h-7 w-24 text-xs"
               disabled={submitting}
             />
+            {field.business_type === "date" ||
+            field.business_type === "datetime" ? (
+              <DateDefaultControl
+                value={field.default ?? ""}
+                businessType={field.business_type}
+                disabled={submitting}
+                onChange={(v) => onFieldChange({ default: v })}
+              />
+            ) : null}
           </div>
 
           {field.business_type === "select" || field.business_type === "multiselect" ? (
@@ -251,6 +260,91 @@ const PHYSICAL_TYPES = [
   "NUMERIC",
   "BOOLEAN",
 ];
+
+type DateDefaultMode = "" | "now" | "fixed";
+
+function parseDateDefault(raw: string): DateDefaultMode {
+  if (raw === "") return "";
+  if (raw === "now") return "now";
+  return "fixed";
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function nowAsDateString(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function nowAsDateTimeLocalString(): string {
+  const d = new Date();
+  return `${nowAsDateString()}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function dateTimeLocalToBackend(value: string): string {
+  // HTML datetime-local 形如 "YYYY-MM-DDTHH:MM"；把 T 换成空格,并补 :00 秒,
+  // 适配后端 validateFieldDefault 接受的 "YYYY-MM-DD HH:MM:SS"。
+  return value.replace("T", " ") + (value.length === 16 ? ":00" : "");
+}
+
+interface DateDefaultControlProps {
+  value: string;
+  businessType: "date" | "datetime";
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}
+
+function DateDefaultControl({
+  value,
+  businessType,
+  disabled,
+  onChange,
+}: DateDefaultControlProps) {
+  const mode = parseDateDefault(value);
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[11px] text-muted-foreground">默认值</span>
+      <select
+        value={mode}
+        onChange={(e) => {
+          const m = e.target.value as DateDefaultMode;
+          if (m === "") onChange("");
+          else if (m === "now") onChange("now");
+          else {
+            // 切到「固定值」时给一个默认填值,避免空串被当成无默认。
+            if (businessType === "date") onChange(nowAsDateString());
+            else onChange(dateTimeLocalToBackend(nowAsDateTimeLocalString()));
+          }
+        }}
+        className="h-7 rounded-md border bg-transparent px-2 text-xs"
+        disabled={disabled}
+      >
+        <option value="">无</option>
+        <option value="now">当前时间</option>
+        <option value="fixed">固定值</option>
+      </select>
+      {mode === "fixed" ? (
+        <Input
+          type={businessType === "date" ? "date" : "datetime-local"}
+          value={
+            businessType === "date"
+              ? value
+              : value.replace(" ", "T").slice(0, 16)
+          }
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (businessType === "date") onChange(raw);
+            else onChange(raw ? dateTimeLocalToBackend(raw) : "");
+          }}
+          className="h-7 w-40 text-xs"
+          disabled={disabled}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 interface FlagToggleProps {
   active: boolean;

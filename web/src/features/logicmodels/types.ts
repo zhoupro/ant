@@ -38,6 +38,8 @@ export interface FieldConfig {
   sort: number;
   placeholder?: string;
   options?: SelectOption[];
+  // 默认值：仅 date / datetime 生效。空 = 无默认；"now" = 当前时间；其它 = 固定时间字面量。
+  default?: string;
 }
 
 export interface TableConfig {
@@ -126,6 +128,7 @@ export interface RuntimeField {
   sort: number;
   placeholder?: string;
   options?: SelectOption[];
+  default?: string;
 }
 
 export interface RuntimeTable {
