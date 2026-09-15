@@ -37,6 +37,7 @@ import type {
   RowMutationInput,
   RuntimeField,
   RuntimeSchema,
+  SelectOption,
 } from "@/features/logicmodels/types";
 
 interface ModelRuntimeProps {
@@ -445,6 +446,29 @@ export function ModelRuntime({
                       <option value="true">是</option>
                       <option value="false">否</option>
                     </select>
+                  ) : f.business_type === "select" ||
+                    f.business_type === "multiselect" ? (
+                    <select
+                      value={filters[f.physical] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFilters((prev) => {
+                          const next = { ...prev };
+                          if (v) next[f.physical] = v;
+                          else delete next[f.physical];
+                          return next;
+                        });
+                        setOffset(0);
+                      }}
+                      className="h-6 w-full rounded border bg-background px-1 text-[10px]"
+                    >
+                      <option value="">全部</option>
+                      {(f.options ?? []).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
                   ) : f.business_type === "date" ||
                     f.business_type === "datetime" ? (
                     <Input
@@ -711,8 +735,26 @@ function CellValue({ value, field, onPreviewImage }: CellValueProps) {
       );
     case "boolean":
       return value ? "✓" : "✗";
+    case "select": {
+      const lbl = optionLabel(field.options, value);
+      return <span>{lbl ?? String(value)}</span>;
+    }
+    case "multiselect": {
+      const labels = optionLabels(field.options, parseStoredList(value));
+      return (
+        <span className="inline-flex flex-wrap gap-1">
+          {labels.map((l, i) => (
+            <span
+              key={i}
+              className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground"
+            >
+              {l}
+            </span>
+          ))}
+        </span>
+      );
+    }
     case "images":
-    case "multiselect":
     case "json":
       return <span className="font-mono text-[10px]">{summarize(value)}</span>;
     default:
@@ -731,6 +773,36 @@ function summarize(v: unknown): string {
   }
   const s = String(v);
   return s.length > 80 ? s.slice(0, 77) + "…" : s;
+}
+
+function optionLabel(options: SelectOption[] | undefined, value: unknown): string | null {
+  if (!options || value === null || value === undefined) return null;
+  const v = String(value);
+  const hit = options.find((o) => o.value === v);
+  return hit ? hit.label : null;
+}
+
+function optionLabels(options: SelectOption[] | undefined, values: unknown[]): string[] {
+  if (!options) return [];
+  const out: string[] = [];
+  for (const v of values) {
+    const lbl = optionLabel(options, v);
+    out.push(lbl ?? String(v));
+  }
+  return out;
+}
+
+function parseStoredList(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x));
+  if (typeof v === "string") {
+    try {
+      const arr = JSON.parse(v);
+      if (Array.isArray(arr)) return arr.map((x) => String(x));
+    } catch {
+      return v ? [v] : [];
+    }
+  }
+  return [];
 }
 
 interface RowDetailDialogProps {
@@ -830,6 +902,10 @@ function DetailField({
             type={field.business_type}
             onPreview={onPreview}
           />
+        ) : field.business_type === "select" ? (
+          <DetailSelectValue value={value} options={field.options} />
+        ) : field.business_type === "multiselect" ? (
+          <DetailMultiSelectValue value={value} options={field.options} />
         ) : (
           <DetailValue value={value} />
         )}
@@ -850,6 +926,69 @@ function DetailValue({ value }: { value: unknown }) {
     );
   }
   return <span>{String(value)}</span>;
+}
+
+function DetailSelectValue({
+  value,
+  options,
+}: {
+  value: unknown;
+  options?: SelectOption[];
+}) {
+  if (value === null || value === undefined || value === "") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  const lbl = optionLabel(options, value);
+  if (lbl) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span>{lbl}</span>
+        <span className="font-mono text-[10px] text-muted-foreground">
+          ({String(value)})
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{String(value)}</span>
+      <span className="text-[10px] text-amber-600">未匹配选项</span>
+    </span>
+  );
+}
+
+function DetailMultiSelectValue({
+  value,
+  options,
+}: {
+  value: unknown;
+  options?: SelectOption[];
+}) {
+  const list = parseStoredList(value);
+  if (list.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  const labels = optionLabels(options, list);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {labels.map((l, i) => {
+        const matched = options?.some((o) => o.label === l && o.value === list[i]);
+        return (
+          <span
+            key={i}
+            className={
+              matched
+                ? "rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary"
+                : "rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+            }
+            title={list[i]}
+          >
+            {l}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 interface ImagePreviewDialogProps {

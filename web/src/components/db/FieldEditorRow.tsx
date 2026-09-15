@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import type {
   BusinessType,
   BusinessTypeInfo,
   FieldConfig,
+  SelectOption,
 } from "@/features/logicmodels/types";
 import { cn } from "@/lib/utils";
 
@@ -193,6 +194,14 @@ export function FieldEditorRow({
               disabled={submitting}
             />
           </div>
+
+          {field.business_type === "select" || field.business_type === "multiselect" ? (
+            <OptionsEditor
+              options={field.options ?? []}
+              disabled={submitting}
+              onChange={(options) => onFieldChange({ options })}
+            />
+          ) : null}
         </div>
         {!canRemove ? (
           <span className="shrink-0 self-center text-[10px] text-muted-foreground">
@@ -267,5 +276,84 @@ function FlagToggle({ active, onChange, label, disabled }: FlagToggleProps) {
     >
       {label}
     </button>
+  );
+}
+
+interface OptionsEditorProps {
+  options: SelectOption[];
+  disabled?: boolean;
+  onChange: (options: SelectOption[]) => void;
+}
+
+function OptionsEditor({ options, disabled, onChange }: OptionsEditorProps) {
+  const list = options ?? [];
+  const update = (idx: number, patch: Partial<SelectOption>) => {
+    const next = list.map((o, i) => (i === idx ? { ...o, ...patch } : o));
+    onChange(next);
+  };
+  const remove = (idx: number) => {
+    onChange(list.filter((_, i) => i !== idx));
+  };
+  const add = () => {
+    onChange([...list, { label: "", value: "" }]);
+  };
+  return (
+    <div className="rounded-md border bg-muted/20 p-2">
+      <div className="mb-1.5 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="font-medium">下拉列表</span>
+          <span>· 配置插入值与展示值</span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          disabled={disabled}
+          onClick={add}
+        >
+          <Plus className="size-3" />
+          新增选项
+        </Button>
+      </div>
+      {list.length === 0 ? (
+        <p className="rounded border border-dashed bg-background/60 px-2 py-2 text-center text-[11px] text-muted-foreground">
+          尚未配置选项,点击右上「新增选项」添加
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {list.map((o, idx) => (
+            <li key={idx} className="flex items-center gap-1.5">
+              <span className="w-6 text-right font-mono text-[10px] text-muted-foreground">
+                {idx + 1}
+              </span>
+              <Input
+                value={o.label}
+                onChange={(e) => update(idx, { label: e.target.value })}
+                placeholder="展示值"
+                className="h-7 flex-1 text-xs"
+                disabled={disabled}
+              />
+              <Input
+                value={o.value}
+                onChange={(e) => update(idx, { value: e.target.value })}
+                placeholder="插入值"
+                className="h-7 flex-1 font-mono text-xs"
+                disabled={disabled}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`删除选项 ${idx + 1}`}
+                disabled={disabled}
+                onClick={() => remove(idx)}
+              >
+                <Trash2 className="size-3 text-destructive" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
