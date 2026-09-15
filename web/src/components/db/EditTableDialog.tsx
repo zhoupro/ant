@@ -152,7 +152,11 @@ export function EditTableDialog({
           listBusinessTypes(),
         ]);
         setBusinessTypes(types);
-        await autoCreateModel({ physical: tableName });
+        try {
+          await getModel(slug);
+        } catch {
+          await autoCreateModel({ physical: tableName });
+        }
         const m = await getModel(slug);
         setModelLabel(m.label);
         setModelDescription(m.description);

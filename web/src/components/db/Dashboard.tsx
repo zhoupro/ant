@@ -10,6 +10,7 @@ import {
   dropTable,
   formatBytes,
   getDBStatus,
+  getModel,
   listTables,
   saveModel,
 } from "@/lib/api";
@@ -122,8 +123,14 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
     setActive(name);
     setLoadingRuntime(true);
     try {
-      const row = await autoCreateModel({ physical: name });
-      setActiveSlug(row.slug);
+      const slug = `auto_${name}`;
+      try {
+        await getModel(slug);
+        setActiveSlug(slug);
+      } catch {
+        const row = await autoCreateModel({ physical: name });
+        setActiveSlug(row.slug);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "加载失败");
     } finally {
