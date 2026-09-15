@@ -11,6 +11,7 @@ export type HomeTab =
   | "files"
   | "db"
   | "pages"
+  | "dashboards"
   | "cron"
   | "api"
   | "logs"

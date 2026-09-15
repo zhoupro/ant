@@ -18,12 +18,13 @@ type PagesHandler struct {
 func NewPagesHandler(store *pages.Store) *PagesHandler { return &PagesHandler{store: store} }
 
 type pageInput struct {
-	Slug      string `json:"slug"`
-	Label     string `json:"label"`
-	Icon      string `json:"icon"`
-	ParentID  string `json:"parent_id"`
-	ModelSlug string `json:"model_slug"`
-	Sort      int    `json:"sort"`
+	Slug        string `json:"slug"`
+	Label       string `json:"label"`
+	Icon        string `json:"icon"`
+	ParentID    string `json:"parent_id"`
+	ModelSlug   string `json:"model_slug"`
+	DashboardID string `json:"dashboard_id"`
+	Sort        int    `json:"sort"`
 }
 
 func (h *PagesHandler) list(c *gin.Context) {
@@ -56,12 +57,13 @@ func (h *PagesHandler) create(c *gin.Context) {
 		return
 	}
 	row, err := h.store.Create(pages.Page{
-		Slug:      strings.TrimSpace(in.Slug),
-		Label:     strings.TrimSpace(in.Label),
-		Icon:      strings.TrimSpace(in.Icon),
-		ParentID:  strings.TrimSpace(in.ParentID),
-		ModelSlug: strings.TrimSpace(in.ModelSlug),
-		Sort:      in.Sort,
+		Slug:        strings.TrimSpace(in.Slug),
+		Label:       strings.TrimSpace(in.Label),
+		Icon:        strings.TrimSpace(in.Icon),
+		ParentID:    strings.TrimSpace(in.ParentID),
+		ModelSlug:   strings.TrimSpace(in.ModelSlug),
+		DashboardID: strings.TrimSpace(in.DashboardID),
+		Sort:        in.Sort,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -78,12 +80,13 @@ func (h *PagesHandler) update(c *gin.Context) {
 		return
 	}
 	row, err := h.store.Update(id, pages.Page{
-		Slug:      strings.TrimSpace(in.Slug),
-		Label:     strings.TrimSpace(in.Label),
-		Icon:      strings.TrimSpace(in.Icon),
-		ParentID:  strings.TrimSpace(in.ParentID),
-		ModelSlug: strings.TrimSpace(in.ModelSlug),
-		Sort:      in.Sort,
+		Slug:        strings.TrimSpace(in.Slug),
+		Label:       strings.TrimSpace(in.Label),
+		Icon:        strings.TrimSpace(in.Icon),
+		ParentID:    strings.TrimSpace(in.ParentID),
+		ModelSlug:   strings.TrimSpace(in.ModelSlug),
+		DashboardID: strings.TrimSpace(in.DashboardID),
+		Sort:        in.Sort,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

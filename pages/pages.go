@@ -17,15 +17,16 @@ var slugRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 const tableName = "pages"
 
 type Page struct {
-	ID        string    `gorm:"primaryKey;size:64" json:"id"`
-	Slug      string    `gorm:"size:64;not null;uniqueIndex:idx_pages_slug" json:"slug"`
-	Label     string    `gorm:"size:128;not null" json:"label"`
-	Icon      string    `gorm:"size:64" json:"icon"`
-	ParentID  string    `gorm:"size:64;index" json:"parent_id"`
-	ModelSlug string    `gorm:"size:64" json:"model_slug"`
-	Sort      int       `json:"sort"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	ID          string    `gorm:"primaryKey;size:64" json:"id"`
+	Slug        string    `gorm:"size:64;not null;uniqueIndex:idx_pages_slug" json:"slug"`
+	Label       string    `gorm:"size:128;not null" json:"label"`
+	Icon        string    `gorm:"size:64" json:"icon"`
+	ParentID    string    `gorm:"size:64;index" json:"parent_id"`
+	ModelSlug   string    `gorm:"size:64" json:"model_slug"`
+	DashboardID string    `gorm:"size:64;index" json:"dashboard_id"`
+	Sort        int       `json:"sort"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Page) TableName() string { return tableName }
@@ -117,13 +118,14 @@ func (s *Store) Update(id string, in Page) (*Page, error) {
 		return nil, err
 	}
 	if err := gdb.Model(&Page{}).Where("id = ?", id).Updates(map[string]any{
-		"slug":       in.Slug,
-		"label":      in.Label,
-		"icon":       in.Icon,
-		"parent_id":  in.ParentID,
-		"model_slug": in.ModelSlug,
-		"sort":       in.Sort,
-		"updated_at": time.Now(),
+		"slug":         in.Slug,
+		"label":        in.Label,
+		"icon":         in.Icon,
+		"parent_id":    in.ParentID,
+		"model_slug":   in.ModelSlug,
+		"dashboard_id": in.DashboardID,
+		"sort":         in.Sort,
+		"updated_at":   time.Now(),
 	}).Error; err != nil {
 		return nil, err
 	}

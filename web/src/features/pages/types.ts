@@ -5,6 +5,7 @@ export interface Page {
   icon: string;
   parent_id: string;
   model_slug: string;
+  dashboard_id: string;
   sort: number;
   created_at: string;
   updated_at: string;
@@ -16,5 +17,6 @@ export interface PageInput {
   icon: string;
   parent_id: string;
   model_slug: string;
+  dashboard_id: string;
   sort: number;
 }

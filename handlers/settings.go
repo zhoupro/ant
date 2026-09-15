@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"mc/dashboards"
 	"mc/datadb"
 	"mc/logicmodels"
 	"mc/pages"
@@ -22,6 +23,7 @@ type SettingsDeps struct {
 	Manager      *datadb.Manager
 	LMStore      *logicmodels.Store
 	PagesStore   *pages.Store
+	DashStore    *dashboards.Store
 }
 
 type settingsPayload struct {
@@ -96,6 +98,9 @@ func updateSettings(c *gin.Context) {
 			if deps.PagesStore != nil {
 				deps.PagesStore.ResetCache()
 			}
+			if deps.DashStore != nil {
+				deps.DashStore.ResetCache()
+			}
 			value = ""
 		} else {
 			if !filepath.IsAbs(value) {
@@ -136,6 +141,9 @@ func updateSettings(c *gin.Context) {
 			}
 			if deps.PagesStore != nil {
 				deps.PagesStore.ResetCache()
+			}
+			if deps.DashStore != nil {
+				deps.DashStore.ResetCache()
 			}
 			value = abs
 		}

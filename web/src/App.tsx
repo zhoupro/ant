@@ -12,6 +12,7 @@ import {
 import { AppShell, type HomeTab } from "@/components/AppShell";
 import { APITokens } from "@/components/APITokens";
 import { CronJobs } from "@/components/CronJobs";
+import { DashboardsList } from "@/components/dashboards/DashboardsList";
 import { Files } from "@/components/Files";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
@@ -113,6 +114,7 @@ export default function App() {
   const canFiles = hasPermission(view.user, "view_files");
   const canDb = hasPermission(view.user, "view_database");
   const canPages = hasPermission(view.user, "view_pages");
+  const canDashboards = hasPermission(view.user, "view_dashboards");
   const canApi = hasPermission(view.user, "view_api_tokens");
 const canCron = hasPermission(view.user, "view_cron_jobs");
   const canLogs = hasPermission(view.user, "view_logs");
@@ -147,7 +149,7 @@ const canCron = hasPermission(view.user, "view_cron_jobs");
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">页面配置</CardTitle>
               <CardDescription>
-                配置底部导航的页面,最多两级,每个页面关联一个逻辑模型,进入即展示其数据表格
+                配置底部导航的页面,最多两级,每个页面关联一个逻辑模型或一个统计中心,进入即展示其内容
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -159,6 +161,19 @@ const canCron = hasPermission(view.user, "view_cron_jobs");
                 initialEdit={editingPage}
                 onEditConsumed={() => setEditingPage(null)}
               />
+            </CardContent>
+          </Card>
+        ) : tab === "dashboards" && canDashboards ? (
+          <Card className="w-full max-w-3xl shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">统计中心</CardTitle>
+              <CardDescription>
+                一个统计中心由若干张「卡片」组成,每张卡片执行一条只读 SQL,
+                可以是数字 / 表格或折线图。配置完成后,把它挂到任意页面下,即在首页渲染。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DashboardsList />
             </CardContent>
           </Card>
         ) : tab === "api" && canApi ? (
