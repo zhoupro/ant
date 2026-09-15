@@ -29,6 +29,7 @@ func NewRuntimeHandler(store *logicmodels.Store, mgr *datadb.Manager) *RuntimeHa
 type runtimeField struct {
 	Key          string                   `json:"key"`
 	Physical     string                   `json:"physical"`
+	PhysicalType string                   `json:"physical_type,omitempty"`
 	Label        string                   `json:"label"`
 	BusinessType string                   `json:"business_type"`
 	Required     bool                     `json:"required"`
@@ -121,7 +122,7 @@ func (h *RuntimeHandler) schema(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "数据库未加载"})
 		return
 	}
-	_, err = h.resolveTables(gdb, cfg)
+	tables, err := h.resolveTables(gdb, cfg)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -134,6 +135,7 @@ func (h *RuntimeHandler) schema(c *gin.Context) {
 		UpdatedAt:   row.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 	for _, t := range cfg.Tables {
+		pt := tables[t.Alias]
 		rt := runtimeTable{
 			Alias:      t.Alias,
 			Physical:   t.Physical,
@@ -141,9 +143,19 @@ func (h *RuntimeHandler) schema(c *gin.Context) {
 			PrimaryKey: t.PrimaryKey,
 		}
 		for _, f := range t.Fields {
+			var ptype string
+			if pt != nil {
+				for _, col := range pt.Columns {
+					if col.Name == f.Physical {
+						ptype = col.Type
+						break
+					}
+				}
+			}
 			rt.Fields = append(rt.Fields, runtimeField{
 				Key:          f.Key,
 				Physical:     f.Physical,
+				PhysicalType: ptype,
 				Label:        f.Label,
 				BusinessType: f.BusinessType,
 				Required:     f.Required,

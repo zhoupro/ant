@@ -1,3 +1,5 @@
+import { JsonEditor } from "./JsonEditor";
+import { formatJsonOrNull } from "./jsonFormat";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -1014,6 +1016,11 @@ function RowFormDialog({
         drafts[f.key] = JSON.stringify(v, null, 2);
       } else if (typeof v === "boolean") {
         seed[f.key] = v ? "true" : "false";
+      } else if (f.business_type === "json") {
+        const raw = String(v);
+        seed[f.key] = raw;
+        const pretty = formatJsonOrNull(raw) ?? raw;
+        drafts[f.key] = pretty;
       } else {
         seed[f.key] = String(v);
       }
@@ -1230,12 +1237,11 @@ function FieldInput({
       return (
         <div className="space-y-1 sm:col-span-2">
           {common}
-          <textarea
+          <JsonEditor
             value={jsonDraft ?? value}
-            onChange={(e) => onJsonDraftChange(e.target.value)}
-            rows={4}
+            onChange={onJsonDraftChange}
             placeholder='{"key": "value"}'
-            className="w-full resize-none rounded-lg border bg-transparent px-2.5 py-1.5 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            rows={6}
           />
         </div>
       );

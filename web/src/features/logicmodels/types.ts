@@ -115,6 +115,7 @@ export interface PhysicalTable {
 export interface RuntimeField {
   key: string;
   physical: string;
+  physical_type?: string;
   label: string;
   business_type: BusinessType;
   required: boolean;
