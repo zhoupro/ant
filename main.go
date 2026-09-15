@@ -9,13 +9,16 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"mc/applogs"
 	"mc/cronjobs"
 	"mc/dashboards"
 	"mc/datadb"
 	"mc/db"
 	"mc/handlers"
+	"mc/logentries"
 	"mc/logicmodels"
 	"mc/pages"
+	"mc/seed"
 	"mc/settings"
 
 	"github.com/gin-gonic/gin"
@@ -80,6 +83,11 @@ func main() {
 	lmStore := logicmodels.NewStore(mgr)
 	pagesStore := pages.NewStore(mgr)
 	dashStore := dashboards.NewStore(mgr)
+	logStore := logentries.NewStore(mgr)
+
+	// 日志异步落库 worker 持有受管库的 store,后续 HTTPRequestLogMiddleware
+	// 启用时会把条目直接推到队列里,由后台协程写入 logs 表。
+	applogs.SetStore(logStore)
 
 	cronStore := cronjobs.NewStore()
 	cronRunner, err := cronjobs.NewRunner(filepath.Join("data", "cron-logs"))
@@ -106,15 +114,22 @@ func main() {
 	setupFrontendAssets(r)
 
 	handlers.Register(r, handlers.Deps{
-		Store:       store,
-		Manager:     mgr,
-		LMStore:     lmStore,
-		PagesStore:  pagesStore,
-		DashStore:   dashStore,
-		CronStore:   cronStore,
-		CronRunner:  cronRunner,
-		CronSched:   cronScheduler,
+		Store:      store,
+		Manager:    mgr,
+		LMStore:    lmStore,
+		PagesStore: pagesStore,
+		DashStore:  dashStore,
+		LogStore:   logStore,
+		CronStore:  cronStore,
+		CronRunner: cronRunner,
+		CronSched:  cronScheduler,
 	})
+
+	// 在受管库就绪、stores 完成初始化后,确保 logs/log_images 表与默认
+	// 逻辑模型/页面都已存在 —— 这样首次启动就能直接在首页看到「日志」入口。
+	if err := seed.EnsureAll(logStore, lmStore, pagesStore); err != nil {
+		log.Printf("warning: 默认 seed 失败: %v", err)
+	}
 
 	// 用 ctx 控制调度器生命周期 —— SIGINT/SIGTERM 触发 stop,run.sh 重启时也能优雅退出。
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())

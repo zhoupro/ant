@@ -1,15 +1,16 @@
 // Package applogs 实现应用内统一的日志落库能力。
 //
-// 调用方通过 Record/RecordFromGin 等函数写入条目,日志会异步写入 `logs` 表;
-// 同时支持把已有的附件(图片)关联到日志条目,方便在前端还原现场截图。
+// 调用方通过 Record/RecordFromGin 等函数写入条目,日志会异步写入受管 SQLite
+// (managed.db) 的 logs 表;同时支持把已有的附件(图片)关联到日志条目。
 package applogs
+
 import (
 	"encoding/json"
 	"log"
 	"strconv"
 	"sync"
 
-	"mc/db"
+	"mc/logentries"
 	"mc/models"
 
 	"github.com/gin-gonic/gin"
@@ -38,7 +39,16 @@ var (
 	queueMu sync.Mutex
 	queue   = make(chan Entry, 512)
 	started bool
+	store   *logentries.Store
 )
+
+// SetStore 在启动时注入受管库句柄;未注入时 Record 会退化为同步直接
+// 写入一个无 store 的日志(调用方需自行保证 store 已就绪)。
+func SetStore(s *logentries.Store) {
+	queueMu.Lock()
+	defer queueMu.Unlock()
+	store = s
+}
 
 // Start 启动后台落库 worker。多次调用幂等。
 func Start() {
@@ -109,6 +119,14 @@ func RecordFromGin(c *gin.Context, e Entry) {
 }
 
 func persist(e Entry) error {
+	queueMu.Lock()
+	s := store
+	queueMu.Unlock()
+	if s == nil {
+		log.Printf("logs: store not initialized, dropping entry")
+		return nil
+	}
+
 	var metaJSON string
 	if e.Metadata != nil {
 		b, err := json.Marshal(e.Metadata)
@@ -117,7 +135,7 @@ func persist(e Entry) error {
 		}
 		metaJSON = string(b)
 	}
-	entry := models.Log{
+	entry := logentries.Log{
 		Level:      e.Level,
 		Source:     e.Source,
 		Title:      e.Title,
@@ -133,23 +151,7 @@ func persist(e Entry) error {
 		DurationMs: e.DurationMs,
 		Metadata:   metaJSON,
 	}
-	if err := db.DB.Create(&entry).Error; err != nil {
-		return err
-	}
-	if len(e.ImageIDs) > 0 {
-		rows := make([]models.LogImage, 0, len(e.ImageIDs))
-		for i, id := range e.ImageIDs {
-			rows = append(rows, models.LogImage{
-				LogID:        entry.ID,
-				AttachmentID: id,
-				SortOrder:    i,
-			})
-		}
-		if err := db.DB.Create(&rows).Error; err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.Create(&entry, e.ImageIDs)
 }
 
 // FormatIntPtr 把 *int 序列化成字符串,空指针返回空串。

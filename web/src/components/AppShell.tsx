@@ -14,7 +14,6 @@ export type HomeTab =
   | "dashboards"
   | "cron"
   | "api"
-  | "logs"
   | "settings"
   | "users"
   | "roles";

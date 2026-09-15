@@ -43,8 +43,6 @@ func Init(dbPath string) {
 		&models.APIToken{},
 		&models.CronJob{},
 		&models.CronJobRun{},
-		&models.Log{},
-		&models.LogImage{},
 	); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
@@ -160,12 +158,15 @@ func seedPermissions() {
 // seedRoles 在所有权限就绪后,确保两个内置角色存在并绑定了正确权限。
 func seedRoles() {
 	ensureRole(models.RoleCodeSuperAdmin, "超级管理员", "拥有全部权限,可管理用户与角色", allPermissionIDs)
-	// 默认普通用户只挂"查看首页" + "查看页面配置",这样底部导航仍可工作,
-	// 但任何数据/管理功能都需要管理员显式授权。
-	ensureRole(models.RoleCodeRegularUser, "普通用户", "默认仅可访问首页,可被管理员分配其他功能", func() []uint {
+	// 默认普通用户除了首页/页面配置外,还默认拥有"查看逻辑模型" —— 任何指向
+	// 逻辑模型(包含首页内置的「日志」auto_logs)的页面,都要走 ModelRuntime,
+	// 这条权限是 ModelRuntime 拉取 schema/rows 的前置条件。其它任何写/管理类
+	// 权限仍需管理员显式授予。
+	ensureRole(models.RoleCodeRegularUser, "普通用户", "默认可访问首页与模型页面,可被管理员分配其他功能", func() []uint {
 		return []uint{
 			permIDByCode(models.PermViewHome),
 			permIDByCode(models.PermViewPages),
+			permIDByCode(models.PermViewModels),
 		}
 	})
 }
