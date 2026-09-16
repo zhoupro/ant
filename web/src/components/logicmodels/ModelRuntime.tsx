@@ -801,6 +801,20 @@ function defaultHint(field: RuntimeField): string | undefined {
   return `默认：${d}`;
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function nowAsDateString(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function nowAsDateTimeLocalString(): string {
+  const d = new Date();
+  return `${nowAsDateString()}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 function optionLabel(options: SelectOption[] | undefined, value: unknown): string | null {
   if (!options || value === null || value === undefined) return null;
   const v = String(value);
@@ -1194,7 +1208,20 @@ function RowFormDialog({
     for (const f of fields) {
       const v = initial?.[f.physical];
       if (v === null || v === undefined) {
-        seed[f.key] = "";
+        // 插入时,如果字段配置了 default === "now" 且未提供值,
+        // 用打开弹窗那一刻的当前时间作为默认值,前端先于后端兜底填上,
+        // 让用户能立刻看到「时间」字段被自动填充了。
+        if (mode === "insert" && f.default === "now") {
+          if (f.business_type === "datetime") {
+            seed[f.key] = nowAsDateTimeLocalString();
+          } else if (f.business_type === "date") {
+            seed[f.key] = nowAsDateString();
+          } else {
+            seed[f.key] = "";
+          }
+        } else {
+          seed[f.key] = "";
+        }
       } else if (typeof v === "object") {
         seed[f.key] = JSON.stringify(v);
         drafts[f.key] = JSON.stringify(v, null, 2);
@@ -1213,7 +1240,7 @@ function RowFormDialog({
     setJsonDrafts(drafts);
     setM2m({});
     setError(null);
-  }, [open, fields, initial]);
+  }, [open, fields, initial, mode]);
 
   if (!rootTable) return null;
 

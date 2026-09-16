@@ -727,10 +727,9 @@ func (h *RuntimeHandler) insert(c *gin.Context) {
 	}
 	// date / datetime 字段未提供值时,按 default 兜底:
 	// "" = 不兜底；"now" = 当前时间；其它 = 固定时间字面量。
+	// 此处不要求 f.Editable:非可编辑字段(如 created_at)若配置了 default,
+	// 也会被自动填上,用户提交的同名键值会在前面的循环里被忽略。
 	for _, f := range root.Fields {
-		if !f.Editable {
-			continue
-		}
 		if !physicalColSet[f.Physical] {
 			continue
 		}

@@ -52,6 +52,7 @@ func defaultLogsModelConfig() logicmodels.ModelConfig {
 						ListShow:     true,
 						Searchable:   false,
 						Sort:         0,
+						Default:      logicmodels.DefaultSentinelNow,
 					},
 					{
 						Key:          "level",

@@ -340,6 +340,35 @@ export function listBusinessTypes(): Promise<BusinessTypeInfo[]> {
   return request<BusinessTypeInfo[]>(`${MODELS_BASE}/business-types`);
 }
 
+export function listModelTables(): Promise<{
+  tables: import("@/features/logicmodels/types").PhysicalTable[];
+}> {
+  return request<{
+    tables: import("@/features/logicmodels/types").PhysicalTable[];
+  }>(`${MODELS_BASE}/tables`);
+}
+
+export function getModelTableSchema(
+  name: string,
+): Promise<import("@/features/logicmodels/types").PhysicalTable> {
+  return request<import("@/features/logicmodels/types").PhysicalTable>(
+    `${MODELS_BASE}/tables/${encodeURIComponent(name)}/schema`,
+  );
+}
+
+export function generateSlug(): string {
+  // 与后端 hashid 一致不可得,前端给一个稳定的小写随机串,
+  // 用户也可自行编辑;仅用于 ModelEditor 的「随机生成」按钮。
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  const head = alphabet[Math.floor(Math.random() * alphabet.length)];
+  let tail = "";
+  const all = alphabet + "0123456789_";
+  for (let i = 0; i < 8; i++) {
+    tail += all[Math.floor(Math.random() * all.length)];
+  }
+  return head + tail;
+}
+
 const RUNTIME_BASE = "/api/runtime";
 
 export function getRuntimeSchema(slug: string): Promise<RuntimeSchema> {

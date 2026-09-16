@@ -14,6 +14,7 @@ import { APITokens } from "@/components/APITokens";
 import { CronJobs } from "@/components/CronJobs";
 import { DashboardsList } from "@/components/dashboards/DashboardsList";
 import { Files } from "@/components/Files";
+import { ModelsList } from "@/components/logicmodels/ModelsList";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { Settings } from "@/components/Settings";
@@ -112,6 +113,7 @@ export default function App() {
 
   const canFiles = hasPermission(view.user, "view_files");
   const canDb = hasPermission(view.user, "view_database");
+  const canModels = hasPermission(view.user, "view_models");
   const canPages = hasPermission(view.user, "view_pages");
   const canDashboards = hasPermission(view.user, "view_dashboards");
   const canApi = hasPermission(view.user, "view_api_tokens");
@@ -133,6 +135,8 @@ const canCron = hasPermission(view.user, "view_cron_jobs");
           <HomeView onGoToSettings={() => setTab("settings")} />
         ) : tab === "files" && canFiles ? (
           <Files />
+        ) : tab === "models" && canModels ? (
+          <ModelsList onGoToDB={() => setTab("db")} />
         ) : tab === "settings" && canSettings ? (
           <Settings
             username={view.user.username}
