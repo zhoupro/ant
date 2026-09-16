@@ -6,6 +6,7 @@ export interface Dashboard {
   label: string;
   icon: string;
   sort: number;
+  config: string;
   created_at: string;
   updated_at: string;
 }
@@ -15,6 +16,29 @@ export interface DashboardInput {
   label: string;
   icon: string;
   sort: number;
+  config: string;
+}
+
+export interface DashboardConfig {
+  refresh_seconds?: number;
+}
+
+export function decodeDashboardConfig(raw: string | null | undefined): DashboardConfig {
+  if (!raw) return {};
+  try {
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === "object") return obj as DashboardConfig;
+  } catch {
+    /* 忽略解析失败 */
+  }
+  return {};
+}
+
+export function encodeDashboardConfig(cfg: DashboardConfig): string {
+  if (!cfg || cfg.refresh_seconds == null || cfg.refresh_seconds <= 0) {
+    return "";
+  }
+  return JSON.stringify({ refresh_seconds: cfg.refresh_seconds });
 }
 
 export interface DashboardCard {

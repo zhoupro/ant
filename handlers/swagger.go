@@ -1296,6 +1296,7 @@ func dashboardSchema() gin.H {
 			"label":      gin.H{"type": "string"},
 			"icon":       gin.H{"type": "string"},
 			"sort":       gin.H{"type": "integer"},
+			"config":     gin.H{"type": "string", "description": "JSON-encoded dashboard-level config, e.g. {\"refresh_seconds\":30}."},
 			"created_at": gin.H{"type": "string", "format": "date-time"},
 			"updated_at": gin.H{"type": "string", "format": "date-time"},
 		},
@@ -1307,10 +1308,11 @@ func dashboardInputSchema() gin.H {
 	return gin.H{
 		"type": "object",
 		"properties": gin.H{
-			"slug":  gin.H{"type": "string", "description": "Unique slug, lowercase letters/digits/_/-."},
-			"label": gin.H{"type": "string", "description": "Display label."},
-			"icon":  gin.H{"type": "string", "description": "Optional lucide-react icon name."},
-			"sort":  gin.H{"type": "integer", "default": 0},
+			"slug":   gin.H{"type": "string", "description": "Unique slug, lowercase letters/digits/_/-."},
+			"label":  gin.H{"type": "string", "description": "Display label."},
+			"icon":   gin.H{"type": "string", "description": "Optional lucide-react icon name."},
+			"sort":   gin.H{"type": "integer", "default": 0},
+			"config": gin.H{"type": "string", "description": "Optional JSON-encoded config; refresh_seconds sets the default auto-refresh interval (>0 enables it)."},
 		},
 		"required": []string{"slug", "label"},
 	}

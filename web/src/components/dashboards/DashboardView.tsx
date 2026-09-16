@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Pause, Play, RefreshCw } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { runDashboardCard } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type {
@@ -9,6 +11,7 @@ import type {
   DashboardCard,
   DashboardDetail,
 } from "@/features/dashboards/types";
+import { decodeDashboardConfig } from "@/features/dashboards/types";
 import { LineChart } from "./LineChart";
 
 interface DashboardViewProps {
@@ -26,6 +29,26 @@ export function DashboardView({ detail, className }: DashboardViewProps) {
   const [runs, setRuns] = useState<Record<string, CardRunResponse>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
+
+  // 聚合页的刷新逻辑:
+  // - 手动刷新按钮(RefreshCw) 立即再拉一次;
+  // - 自动刷新定时器(setInterval) 每 N 秒再拉一次,可在运行时打开 / 关闭;
+  // - 秒数从 dashboard config 里取(每个聚合页可单独配置),也允许运行时调整。
+  const cfg = useMemo(
+    () => decodeDashboardConfig(detail.dashboard.config),
+    [detail.dashboard.config],
+  );
+  const initialSeconds =
+    cfg.refresh_seconds && cfg.refresh_seconds > 0 ? cfg.refresh_seconds : 30;
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(
+    cfg.refresh_seconds != null && cfg.refresh_seconds > 0,
+  );
+  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState(initialSeconds);
+  const [autoRefreshInput, setAutoRefreshInput] = useState(
+    String(initialSeconds),
+  );
+  const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(0);
+  const autoRefreshTickRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     setLoaded(false);
@@ -62,17 +85,97 @@ export function DashboardView({ detail, className }: DashboardViewProps) {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!autoRefreshEnabled || autoRefreshSeconds <= 0) {
+      if (autoRefreshTickRef.current !== null) {
+        window.clearInterval(autoRefreshTickRef.current);
+        autoRefreshTickRef.current = null;
+      }
+      setSecondsUntilRefresh(0);
+      return;
+    }
+    setSecondsUntilRefresh(autoRefreshSeconds);
+    autoRefreshTickRef.current = window.setInterval(() => {
+      setSecondsUntilRefresh((prev) => {
+        if (prev <= 1) {
+          void refresh();
+          return autoRefreshSeconds;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => {
+      if (autoRefreshTickRef.current !== null) {
+        window.clearInterval(autoRefreshTickRef.current);
+        autoRefreshTickRef.current = null;
+      }
+    };
+  }, [autoRefreshEnabled, autoRefreshSeconds, refresh]);
+
   return (
     <div className={cn("space-y-3", className)}>
-      <header className="flex items-center justify-between border-b border-border/60 pb-2">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
         <h3 className="text-sm font-semibold">{detail.dashboard.label}</h3>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="text-xs text-muted-foreground hover:text-foreground"
-        >
-          刷新
-        </button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void refresh()}
+            disabled={cards.length === 0}
+            title="手动执行所有卡片 SQL"
+          >
+            <RefreshCw className="size-3.5" />
+            刷新
+          </Button>
+          <div className="inline-flex items-center gap-1">
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={autoRefreshInput}
+              onChange={(e) => {
+                const v = e.target.value;
+                setAutoRefreshInput(v);
+                const n = Number.parseInt(v, 10);
+                if (Number.isFinite(n) && n > 0) {
+                  setAutoRefreshSeconds(n);
+                  if (autoRefreshEnabled) setSecondsUntilRefresh(n);
+                }
+              }}
+              onBlur={() => {
+                const n = Number.parseInt(autoRefreshInput, 10);
+                if (!Number.isFinite(n) || n < 1) {
+                  setAutoRefreshInput(String(autoRefreshSeconds));
+                }
+              }}
+              className="h-7 w-16 px-2 text-xs"
+              aria-label="自动刷新秒数"
+              title="自动刷新秒数"
+              disabled={cards.length === 0}
+            />
+            <span className="text-[10px] text-muted-foreground">秒</span>
+            <Button
+              size="sm"
+              variant={autoRefreshEnabled ? "default" : "outline"}
+              onClick={() => setAutoRefreshEnabled((v) => !v)}
+              aria-label={autoRefreshEnabled ? "停止自动刷新" : "开启自动刷新"}
+              title={autoRefreshEnabled ? "停止自动刷新" : "开启自动刷新"}
+              disabled={cards.length === 0}
+            >
+              {autoRefreshEnabled ? (
+                <>
+                  <Pause className="size-3.5" />
+                  {secondsUntilRefresh}s
+                </>
+              ) : (
+                <>
+                  <Play className="size-3.5" />
+                  自动
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </header>
       {cards.length === 0 ? (
         <p className="rounded-lg border border-dashed bg-muted/30 p-6 text-center text-xs text-muted-foreground">

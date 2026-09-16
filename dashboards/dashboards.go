@@ -29,12 +29,14 @@ var idRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
 // Dashboard 一组卡片的容器;多条卡片组合后即可挂到 pages 表上作为一个聚合页。
 // Slug 用作 API 路由中的稳定 ID,Label 是给运营人员看的展示名。
+// Config 是容器级别的可选配置(JSON 字符串),例如聚合页默认的自动刷新秒数。
 type Dashboard struct {
 	ID        string    `gorm:"primaryKey;size:64" json:"id"`
 	Slug      string    `gorm:"size:64;not null;uniqueIndex:idx_dashboards_slug" json:"slug"`
 	Label     string    `gorm:"size:128;not null" json:"label"`
 	Icon      string    `gorm:"size:64" json:"icon"`
 	Sort      int       `json:"sort"`
+	Config    string    `gorm:"type:text" json:"config"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
@@ -67,6 +69,41 @@ type CardConfig struct {
 	XColumn   string            `json:"x_column,omitempty"`
 	YColumns  []string          `json:"y_columns,omitempty"`
 	Columns   map[string]string `json:"columns,omitempty"`
+}
+
+// DashboardConfig 容器级别的可选配置。
+// RefreshSeconds 是聚合页默认的自动刷新间隔(秒);0 表示不自动刷新,
+// 由 DashboardView 在初始化时读取,用户也可以在运行时临时调整。
+type DashboardConfig struct {
+	RefreshSeconds int `json:"refresh_seconds,omitempty"`
+}
+
+// Decode 解析 Dashboard.Config 为结构化对象;为空时返回零值而非错误。
+func (d *Dashboard) Decode() (DashboardConfig, error) {
+	if d == nil {
+		return DashboardConfig{}, nil
+	}
+	cfg := DashboardConfig{}
+	s := strings.TrimSpace(d.Config)
+	if s == "" {
+		return cfg, nil
+	}
+	if err := json.Unmarshal([]byte(s), &cfg); err != nil {
+		return cfg, fmt.Errorf("统计中心配置不是合法 JSON: %w", err)
+	}
+	return cfg, nil
+}
+
+// Encode 把结构化配置序列化回 JSON 字符串。
+func (c *DashboardConfig) Encode() (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	b, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // Decode 解析 Card.Config 为结构化对象;为空时返回零值而非错误。
@@ -187,6 +224,7 @@ func (s *Store) UpdateDashboard(id string, in Dashboard) (*Dashboard, error) {
 		"label":      in.Label,
 		"icon":       in.Icon,
 		"sort":       in.Sort,
+		"config":     in.Config,
 		"updated_at": time.Now(),
 	}).Error; err != nil {
 		return nil, err

@@ -69,10 +69,11 @@ func (h *DashboardsHandler) createDashboard(c *gin.Context) {
 		return
 	}
 	row, err := h.store.CreateDashboard(dashboards.Dashboard{
-		Slug:  strings.TrimSpace(in.Slug),
-		Label: strings.TrimSpace(in.Label),
-		Icon:  strings.TrimSpace(in.Icon),
-		Sort:  in.Sort,
+		Slug:   strings.TrimSpace(in.Slug),
+		Label:  strings.TrimSpace(in.Label),
+		Icon:   strings.TrimSpace(in.Icon),
+		Sort:   in.Sort,
+		Config: in.Config,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -97,10 +98,11 @@ func (h *DashboardsHandler) updateDashboard(c *gin.Context) {
 		return
 	}
 	row, err := h.store.UpdateDashboard(id, dashboards.Dashboard{
-		Slug:  strings.TrimSpace(in.Slug),
-		Label: strings.TrimSpace(in.Label),
-		Icon:  strings.TrimSpace(in.Icon),
-		Sort:  in.Sort,
+		Slug:   strings.TrimSpace(in.Slug),
+		Label:  strings.TrimSpace(in.Label),
+		Icon:   strings.TrimSpace(in.Icon),
+		Sort:   in.Sort,
+		Config: in.Config,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -282,10 +284,11 @@ func wrapSelectLimit(sql string, limit int) string {
 // ----- 输入结构 --------------------------------------------------------------
 
 type dashboardInput struct {
-	Slug  string `json:"slug"`
-	Label string `json:"label"`
-	Icon  string `json:"icon"`
-	Sort  int    `json:"sort"`
+	Slug   string `json:"slug"`
+	Label  string `json:"label"`
+	Icon   string `json:"icon"`
+	Sort   int    `json:"sort"`
+	Config string `json:"config"`
 }
 
 type cardInput struct {

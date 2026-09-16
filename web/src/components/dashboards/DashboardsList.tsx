@@ -22,6 +22,10 @@ import type {
   Dashboard,
   DashboardInput,
 } from "@/features/dashboards/types";
+import {
+  decodeDashboardConfig,
+  encodeDashboardConfig,
+} from "@/features/dashboards/types";
 import { DashboardEditor } from "./DashboardEditor";
 import { cn } from "@/lib/utils";
 
@@ -236,6 +240,15 @@ function DashboardEditorDialog({
   const [sort, setSort] = useState<string>(
     initial?.sort != null ? String(initial.sort) : "0",
   );
+  const initialCfg = initial ? decodeDashboardConfig(initial.config) : {};
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(
+    (initialCfg.refresh_seconds ?? 0) > 0,
+  );
+  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState<string>(
+    initialCfg.refresh_seconds && initialCfg.refresh_seconds > 0
+      ? String(initialCfg.refresh_seconds)
+      : "30",
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -245,6 +258,13 @@ function DashboardEditorDialog({
     setLabel(initial?.label ?? "");
     setIcon(initial?.icon || "BarChart");
     setSort(initial?.sort != null ? String(initial.sort) : "0");
+    const cfg = initial ? decodeDashboardConfig(initial.config) : {};
+    setAutoRefreshEnabled((cfg.refresh_seconds ?? 0) > 0);
+    setAutoRefreshSeconds(
+      cfg.refresh_seconds && cfg.refresh_seconds > 0
+        ? String(cfg.refresh_seconds)
+        : "30",
+    );
     setError(null);
   }, [open, initial]);
 
@@ -258,6 +278,15 @@ function DashboardEditorDialog({
       setError("展示名不能为空");
       return;
     }
+    let refreshSeconds = 0;
+    if (autoRefreshEnabled) {
+      const n = Number.parseInt(autoRefreshSeconds, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        setError("自动刷新秒数必须是正整数");
+        return;
+      }
+      refreshSeconds = n;
+    }
     setSubmitting(true);
     try {
       const input: DashboardInput = {
@@ -265,6 +294,7 @@ function DashboardEditorDialog({
         label: label.trim(),
         icon,
         sort: Number(sort) || 0,
+        config: encodeDashboardConfig({ refresh_seconds: refreshSeconds }),
       };
       if (isEdit && initial) {
         await updateDashboard(initial.id, input);
@@ -339,6 +369,38 @@ function DashboardEditorDialog({
               onChange={(e) => setSort(e.target.value)}
               className="h-8 w-full rounded-lg border bg-transparent px-2 text-sm"
             />
+          </div>
+        </div>
+        <div className="space-y-1 rounded-md border bg-muted/20 p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium">运行时自动刷新</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                打开后,聚合页会按设定的秒数自动重新执行所有卡片 SQL。0 / 关闭 = 不自动刷新。
+              </p>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-1 text-xs">
+              <input
+                type="checkbox"
+                checked={autoRefreshEnabled}
+                onChange={(e) => setAutoRefreshEnabled(e.target.checked)}
+                className="size-3.5 accent-foreground"
+              />
+              启用
+            </label>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <label className="text-xs text-muted-foreground">间隔秒数</label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={autoRefreshSeconds}
+              onChange={(e) => setAutoRefreshSeconds(e.target.value)}
+              disabled={!autoRefreshEnabled}
+              className="h-7 w-20 rounded border bg-transparent px-2 text-xs disabled:opacity-50"
+            />
+            <span className="text-[11px] text-muted-foreground">秒</span>
           </div>
         </div>
         {error ? (
