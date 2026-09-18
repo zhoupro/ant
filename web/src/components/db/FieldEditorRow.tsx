@@ -34,6 +34,8 @@ export interface FieldEditorRowProps {
   onAskDelete?: () => void;
   onCancelDelete?: () => void;
   canRemove?: boolean;
+  // 设为 false 时,右侧操作区完全不渲染(用于系统表的逻辑视图编辑)。
+  showRemove?: boolean;
 
   submitting?: boolean;
 }
@@ -51,6 +53,7 @@ export function FieldEditorRow({
   onAskDelete,
   onCancelDelete,
   canRemove = true,
+  showRemove = true,
   submitting = false,
 }: FieldEditorRowProps) {
   return (
@@ -212,7 +215,7 @@ export function FieldEditorRow({
             />
           ) : null}
         </div>
-        {!canRemove ? (
+        {!showRemove ? null : !canRemove ? (
           <span className="shrink-0 self-center text-[10px] text-muted-foreground">
             主键不可删
           </span>

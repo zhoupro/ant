@@ -270,10 +270,10 @@ export function ModelRuntime({
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {onEdit && !readOnly ? (
+            {onEdit ? (
               <Button size="sm" variant="outline" onClick={onEdit}>
                 <Pencil className="size-3.5" />
-                编辑模型
+                {readOnly ? "编辑视图" : "编辑模型"}
               </Button>
             ) : null}
             {readOnly ? null : (

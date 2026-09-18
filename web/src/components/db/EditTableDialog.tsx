@@ -30,6 +30,9 @@ interface EditTableDialogProps {
   onOpenChange: (open: boolean) => void;
   tableName: string;
   onChanged?: () => void;
+  // 系统表场景:只允许编辑逻辑视图(展示名、说明、字段的展示方式),
+  // 不允许改动底层物理结构(增/删/改列)。默认 false。
+  physicalReadOnly?: boolean;
 }
 
 interface DraftRow {
@@ -123,6 +126,7 @@ export function EditTableDialog({
   onOpenChange,
   tableName,
   onChanged,
+  physicalReadOnly = false,
 }: EditTableDialogProps) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -287,38 +291,41 @@ export function EditTableDialog({
     }
     setSubmitting(true);
     try {
-      const toDrop = rows.filter(
-        (r) => r.removed && !r.isNew && r.originalPhysical,
-      );
-      const toAdd = rows.filter((r) => r.isNew && !r.removed);
-      const toAlter = rows.filter(
-        (r) =>
-          !r.isNew &&
-          !r.removed &&
-          r.originalPhysical &&
-          !physicalEqual(r.originalPhysical, r.physical),
-      );
+      // 系统表场景:跳过所有 DDL 操作,只更新逻辑模型配置。
+      if (!physicalReadOnly) {
+        const toDrop = rows.filter(
+          (r) => r.removed && !r.isNew && r.originalPhysical,
+        );
+        const toAdd = rows.filter((r) => r.isNew && !r.removed);
+        const toAlter = rows.filter(
+          (r) =>
+            !r.isNew &&
+            !r.removed &&
+            r.originalPhysical &&
+            !physicalEqual(r.originalPhysical, r.physical),
+        );
 
-      for (const r of toDrop) {
-        if (!r.originalPhysical) continue;
-        await dropColumn(tableName, r.originalPhysical.name);
-      }
-      for (const r of toAdd) {
-        await addColumn(tableName, {
-          name: r.physical.name,
-          type: r.physical.type,
-          notnull: r.physical.notnull,
-          default: r.physical.default,
-        });
-      }
-      for (const r of toAlter) {
-        if (!r.originalPhysical) continue;
-        await alterColumn(tableName, r.originalPhysical.name, {
-          name: r.physical.name,
-          type: r.physical.type,
-          notnull: r.physical.notnull,
-          default: r.physical.default,
-        });
+        for (const r of toDrop) {
+          if (!r.originalPhysical) continue;
+          await dropColumn(tableName, r.originalPhysical.name);
+        }
+        for (const r of toAdd) {
+          await addColumn(tableName, {
+            name: r.physical.name,
+            type: r.physical.type,
+            notnull: r.physical.notnull,
+            default: r.physical.default,
+          });
+        }
+        for (const r of toAlter) {
+          if (!r.originalPhysical) continue;
+          await alterColumn(tableName, r.originalPhysical.name, {
+            name: r.physical.name,
+            type: r.physical.type,
+            notnull: r.physical.notnull,
+            default: r.physical.default,
+          });
+        }
       }
 
       const fields: FieldConfig[] = finalRows.map((r, idx) => ({
@@ -359,18 +366,32 @@ export function EditTableDialog({
   };
 
   const visibleRows = rows.filter((r) => !r.removed);
-  const newCount = visibleRows.filter((r) => r.isNew).length;
-  const alterCount = visibleRows.filter(
-    (r) => !r.isNew && r.originalPhysical && !physicalEqual(r.originalPhysical, r.physical),
-  ).length;
-  const removedCount = rows.filter((r) => r.removed && !r.isNew).length;
+  const newCount = physicalReadOnly
+    ? 0
+    : visibleRows.filter((r) => r.isNew).length;
+  const alterCount = physicalReadOnly
+    ? 0
+    : visibleRows.filter(
+        (r) => !r.isNew && r.originalPhysical && !physicalEqual(r.originalPhysical, r.physical),
+      ).length;
+  const removedCount = physicalReadOnly
+    ? 0
+    : rows.filter((r) => r.removed && !r.isNew).length;
 
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`编辑表 · ${tableName}`}
-      description="调整字段物理结构与业务类型,一次保存,统一生效"
+      title={
+        physicalReadOnly
+          ? `编辑视图 · ${tableName}`
+          : `编辑表 · ${tableName}`
+      }
+      description={
+        physicalReadOnly
+          ? "仅调整字段在视图中的展示方式(展示名、业务类型、是否列表展示等),不会改动数据库表结构"
+          : "调整字段物理结构与业务类型,一次保存,统一生效"
+      }
       size="lg"
       footer={
         <div className="flex w-full items-center justify-between gap-2">
@@ -379,6 +400,7 @@ export function EditTableDialog({
             {newCount > 0 ? ` · 新增 ${newCount}` : ""}
             {alterCount > 0 ? ` · 改动 ${alterCount}` : ""}
             {removedCount > 0 ? ` · 待删 ${removedCount}` : ""}
+            {physicalReadOnly ? " · 仅编辑视图" : ""}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -433,16 +455,18 @@ export function EditTableDialog({
         <section className="space-y-2">
           <header className="flex items-center justify-between">
             <h4 className="text-sm font-medium">字段</h4>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={handleAddField}
-              disabled={submitting}
-            >
-              <Plus className="size-3" />
-              添加字段
-            </Button>
+            {physicalReadOnly ? null : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={handleAddField}
+                disabled={submitting}
+              >
+                <Plus className="size-3" />
+                添加字段
+              </Button>
+            )}
           </header>
           {loading ? (
             <div className="flex h-20 items-center justify-center text-xs text-muted-foreground">
@@ -451,7 +475,9 @@ export function EditTableDialog({
             </div>
           ) : visibleRows.length === 0 ? (
             <p className="rounded-md border border-dashed bg-muted/30 px-3 py-4 text-center text-xs text-muted-foreground">
-              暂无字段,点击右上「添加字段」开始
+              {physicalReadOnly
+                ? "该表暂无可编辑字段"
+                : "暂无字段,点击右上「添加字段」开始"}
             </p>
           ) : (
             <ul className="space-y-2">
@@ -461,9 +487,11 @@ export function EditTableDialog({
                   physical={r.physical}
                   field={r.field}
                   businessTypes={businessTypes}
-                  physicalEditable
-                  onPhysicalChange={(patch) =>
-                    updateRow(r.uid, { physical: patch })
+                  physicalEditable={!physicalReadOnly}
+                  onPhysicalChange={
+                    physicalReadOnly
+                      ? undefined
+                      : (patch) => updateRow(r.uid, { physical: patch })
                   }
                   onFieldChange={(patch) => updateRow(r.uid, { field: patch })}
                   onRemove={() => handleRemove(r.uid)}
@@ -471,6 +499,7 @@ export function EditTableDialog({
                   onAskDelete={() => setPendingDelete(r.uid)}
                   onCancelDelete={() => setPendingDelete(null)}
                   canRemove={r.isNew || !r.physical.pk}
+                  showRemove={!physicalReadOnly}
                   isNew={r.isNew}
                   submitting={submitting}
                 />
@@ -479,7 +508,7 @@ export function EditTableDialog({
           )}
         </section>
 
-        {removedCount > 0 ? (
+        {!physicalReadOnly && removedCount > 0 ? (
           <section className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
             <header className="flex items-center justify-between text-xs">
               <span className="font-medium text-destructive">待删除字段</span>

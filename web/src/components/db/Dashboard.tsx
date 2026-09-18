@@ -37,6 +37,7 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
   const [loadingTables, setLoadingTables] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [structureFor, setStructureFor] = useState<string | null>(null);
+  const [viewFor, setViewFor] = useState<string | null>(null);
   const [loadingRuntime, setLoadingRuntime] = useState(false);
 
   const refreshStatus = useCallback(async () => {
@@ -279,7 +280,12 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
               setActiveSlug(null);
             }}
             onEdit={() => {
-              if (active && !activeTable?.system) setStructureFor(active);
+              if (!active) return;
+              if (activeTable?.system) {
+                setViewFor(active);
+              } else {
+                setStructureFor(active);
+              }
             }}
             onDeleted={() => {
               setActive(null);
@@ -313,6 +319,19 @@ export function Dashboard({ onGoToSettings }: DashboardProps) {
           onChanged={() => {
             void refreshTables();
             void handleSelectTable(structureFor);
+          }}
+        />
+      ) : null}
+      {viewFor ? (
+        <EditTableDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setViewFor(null);
+          }}
+          tableName={viewFor}
+          physicalReadOnly
+          onChanged={() => {
+            void handleSelectTable(viewFor);
           }}
         />
       ) : null}
