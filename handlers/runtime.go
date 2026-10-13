@@ -472,24 +472,40 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		joinsClause = " " + strings.Join(joins, " ")
 	}
 
-	sortField := strings.TrimSpace(req.Sort)
-	sortOrder := strings.ToLower(strings.TrimSpace(req.Order))
-	if sortOrder != "asc" && sortOrder != "desc" {
-		sortOrder = "desc"
-	}
-	var orderBy string
-	if sortField == "" {
-		orderBy = fmt.Sprintf("ORDER BY %s.%s DESC", quoted, quoteCol(pk))
-	} else {
-		physicalSet := map[string]bool{}
-		for _, f := range root.Fields {
-			physicalSet[f.Physical] = true
+	sortFields := splitCSV(req.Sort)
+	sortOrders := splitCSV(req.Order)
+	// 兼容单字段历史调用:order 只传一个,sort 有多个时,把该 order 应用到全部。
+	if len(sortFields) > 1 && len(sortOrders) == 1 {
+		o := sortOrders[0]
+		sortOrders = make([]string, len(sortFields))
+		for i := range sortOrders {
+			sortOrders[i] = o
 		}
-		if !physicalSet[sortField] {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "sort 字段不存在: " + sortField})
+	}
+	physicalSet := map[string]bool{}
+	for _, f := range root.Fields {
+		physicalSet[f.Physical] = true
+	}
+	orderParts := make([]string, 0, len(sortFields))
+	for i, sf := range sortFields {
+		if !physicalSet[sf] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "sort 字段不存在: " + sf})
 			return
 		}
-		orderBy = fmt.Sprintf("ORDER BY %s.%s %s", quoted, quoteCol(sortField), strings.ToUpper(sortOrder))
+		ord := "asc"
+		if i < len(sortOrders) {
+			switch strings.ToLower(strings.TrimSpace(sortOrders[i])) {
+			case "desc":
+				ord = "desc"
+			}
+		}
+		orderParts = append(orderParts, fmt.Sprintf("%s.%s %s", quoted, quoteCol(sf), strings.ToUpper(ord)))
+	}
+	orderBy := ""
+	if len(orderParts) == 0 {
+		orderBy = fmt.Sprintf("ORDER BY %s.%s DESC", quoted, quoteCol(pk))
+	} else {
+		orderBy = "ORDER BY " + strings.Join(orderParts, ", ")
 	}
 
 	dataQ := fmt.Sprintf("SELECT %s FROM %s%s %s %s LIMIT ? OFFSET ?",
@@ -1153,4 +1169,17 @@ func parseNowOffset(val string) (string, bool) {
 		return "", false
 	}
 	return fmt.Sprintf("%s%d %s", sign, n, sql), true
+}
+
+// splitCSV 把 "col1, col2,col3" 这种字符串拆成 []string,自动 trim 空项;
+// 空字符串返回 nil,调用方按「无 sort」处理。
+func splitCSV(s string) []string {
+	out := []string{}
+	for _, p := range strings.Split(s, ",") {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }

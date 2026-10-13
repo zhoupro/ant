@@ -34,3 +34,29 @@ func TestParseNowOffset(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitCSV(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"col1", []string{"col1"}},
+		{"col1,col2", []string{"col1", "col2"}},
+		{" col1 , col2 ,", []string{"col1", "col2"}},
+		{",,,", nil},
+	}
+	for _, c := range cases {
+		got := splitCSV(c.in)
+		if len(got) != len(c.want) {
+			t.Errorf("splitCSV(%q) = %v, want %v", c.in, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("splitCSV(%q) = %v, want %v", c.in, got, c.want)
+				break
+			}
+		}
+	}
+}

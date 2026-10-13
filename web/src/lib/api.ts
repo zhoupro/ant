@@ -384,7 +384,8 @@ export function listRuntimeRows(
     offset?: number;
     search?: string;
     sort?: string;
-    order?: "asc" | "desc";
+    // 多字段排序时是逗号分隔的字符串,如 "asc,desc";后端按顺序应用。
+    order?: string;
     filters?: Record<string, string>;
   } = {},
 ): Promise<RuntimeRowResponse> {

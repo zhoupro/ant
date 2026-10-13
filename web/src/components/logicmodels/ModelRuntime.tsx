@@ -33,7 +33,6 @@ import {
   uploadFile,
 } from "@/lib/api";
 import { absoluteUrl } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import type {
   ExpandedRow,
   RowMutationInput,
@@ -55,6 +54,8 @@ interface ModelRuntimeProps {
   readOnly?: boolean;
 }
 
+type SortEntry = { field: string; order: "asc" | "desc" };
+
 const PAGE_SIZE_DEFAULT = 50;
 
 export function ModelRuntime({
@@ -75,8 +76,9 @@ export function ModelRuntime({
     fields: RuntimeField[];
   } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [sortField, setSortField] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  // 多字段排序:每条 {field, order};按列表先后顺序拼接 ORDER BY。
+  // 点击列头的循环:未排 -> 加 desc -> 切 asc -> 移除(回到无序)。
+  const [sortEntries, setSortEntries] = useState<SortEntry[]>([]);
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState<number>(PAGE_SIZE_DEFAULT);
   const [loading, setLoading] = useState(false);
@@ -117,8 +119,8 @@ export function ModelRuntime({
       const r = await listRuntimeRows(slug, {
         limit: limit,
         offset,
-        sort: sortField ?? undefined,
-        order: sortField ? sortOrder : undefined,
+        sort: sortEntries.length > 0 ? sortEntries.map((e) => e.field).join(",") : undefined,
+        order: sortEntries.length > 0 ? sortEntries.map((e) => e.order).join(",") : undefined,
         filters: cleanFilters,
       });
       setRows({
@@ -133,7 +135,7 @@ export function ModelRuntime({
     } finally {
       setLoading(false);
     }
-  }, [schema, slug, offset, sortField, sortOrder, limit, filters]);
+  }, [schema, slug, offset, sortEntries, limit, filters]);
 
   useEffect(() => {
     void refreshSchema();
@@ -294,7 +296,7 @@ export function ModelRuntime({
         <div className="flex flex-wrap items-center gap-2">
           {(() => {
             const active = Object.values(filters).filter((v) => v.trim()).length;
-            const sortActive = sortField ? 1 : 0;
+            const sortActive = sortEntries.length;
             const total = active + sortActive;
             return total > 0 ? (
               <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] text-foreground/80">
@@ -386,19 +388,30 @@ export function ModelRuntime({
           <thead className="sticky top-0 z-10 bg-muted/60 text-xs text-muted-foreground">
             <tr>
               {visibleFields.map((f) => {
-                const isSorted = sortField === f.physical;
+                const sortIndex = sortEntries.findIndex((e) => e.field === f.physical);
+                const isSorted = sortIndex >= 0;
+                const order = isSorted ? sortEntries[sortIndex].order : null;
                 return (
                   <th
                     key={f.key}
                     role="button"
                     tabIndex={0}
                     onClick={() => {
-                      if (sortField === f.physical) {
-                        setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-                      } else {
-                        setSortField(f.physical);
-                        setSortOrder("desc");
-                      }
+                      setSortEntries((prev) => {
+                        const idx = prev.findIndex((e) => e.field === f.physical);
+                        if (idx < 0) {
+                          // 未排 -> 加入(默认 desc)
+                          return [...prev, { field: f.physical, order: "desc" }];
+                        }
+                        if (prev[idx].order === "desc") {
+                          // desc -> asc,保留位置
+                          const next = prev.slice();
+                          next[idx] = { field: f.physical, order: "asc" };
+                          return next;
+                        }
+                        // asc -> 移除(回到无序),其它列的相对顺序不变
+                        return prev.filter((_, i) => i !== idx);
+                      });
                       setOffset(0);
                     }}
                     onKeyDown={(e) => {
@@ -414,19 +427,25 @@ export function ModelRuntime({
                       <span className="font-mono text-[10px]">
                         [{f.business_type}]
                       </span>
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "text-foreground/70 transition-opacity",
-                          isSorted ? "opacity-100" : "opacity-30",
-                        )}
-                      >
-                        {isSorted
-                          ? sortOrder === "asc"
-                            ? "▲"
-                            : "▼"
-                          : "↕"}
-                      </span>
+                      {isSorted ? (
+                        <span
+                          aria-hidden
+                          className="inline-flex items-center gap-0.5 text-foreground/80"
+                          title={`排序 #${sortIndex + 1} (${order})`}
+                        >
+                          <span className="rounded bg-foreground/10 px-1 text-[10px] tabular-nums">
+                            {sortIndex + 1}
+                          </span>
+                          <span>{order === "asc" ? "▲" : "▼"}</span>
+                        </span>
+                      ) : (
+                        <span
+                          aria-hidden
+                          className="text-foreground/30 transition-opacity"
+                        >
+                          ↕
+                        </span>
+                      )}
                     </div>
                   </th>
                 );
