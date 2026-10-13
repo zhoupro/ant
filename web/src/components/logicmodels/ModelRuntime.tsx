@@ -1512,7 +1512,11 @@ function QrcodeCell({ value, onOpenChange }: QrcodeCellProps) {
       {open ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setOpen(false)}
+          onClick={(e) => {
+            // 阻止冒泡到 <tr>:点击遮罩关闭二维码时不应触发行级"记录详情"。
+            e.stopPropagation();
+            setOpen(false);
+          }}
         >
           <div
             className="rounded-lg bg-background p-4 shadow-xl"
