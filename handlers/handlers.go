@@ -110,11 +110,11 @@ func Register(r *gin.Engine, deps Deps) {
 		// 运行时 CRUD(同逻辑模型权限)
 		rt := NewRuntimeHandler(lmStore, mgr)
 		api.GET("/runtime/:slug/schema", authRequired, requirePermission(models.PermViewModels), rt.schema)
-		api.POST("/runtime/:slug/rows/list", authRequired, requirePermission(models.PermViewModels), rt.rows)
-		api.GET("/runtime/:slug/rows/:pk", authRequired, requirePermission(models.PermViewModels), rt.getRow)
-		api.POST("/runtime/:slug/rows", authRequired, requirePermission(models.PermManageModels), rt.insert)
-		api.PUT("/runtime/:slug/rows/:pk", authRequired, requirePermission(models.PermManageModels), rt.update)
-		api.DELETE("/runtime/:slug/rows/:pk", authRequired, requirePermission(models.PermManageModels), rt.delete)
+		api.POST("/runtime/:slug/list", authRequired, requirePermission(models.PermViewModels), rt.rows)
+		api.POST("/runtime/:slug/one", authRequired, requirePermission(models.PermViewModels), rt.getRow)
+		api.POST("/runtime/:slug/insert", authRequired, requirePermission(models.PermManageModels), rt.insert)
+		api.POST("/runtime/:slug/update", authRequired, requirePermission(models.PermManageModels), rt.update)
+		api.POST("/runtime/:slug/delete", authRequired, requirePermission(models.PermManageModels), rt.delete)
 
 		// 页面配置
 		pg := NewPagesHandler(pagesStore)

@@ -540,7 +540,18 @@ func (h *RuntimeHandler) getRow(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "根表配置缺失"})
 		return
 	}
-	id := c.Param("pk")
+	var in struct {
+		ID string `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体需要 {\"id\": <主键>}: " + err.Error()})
+		return
+	}
+	if in.ID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id 不能为空"})
+		return
+	}
+	id := in.ID
 	pt, err := readPhysicalSchema(gdb, root.Physical)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -697,6 +708,7 @@ func (h *RuntimeHandler) findTable(cfg logicmodels.ModelConfig, alias string) (*
 }
 
 type runtimeRowInput struct {
+	ID        string           `json:"id,omitempty"`
 	Values    map[string]any   `json:"values"`
 	Relations map[string][]any `json:"relations,omitempty"`
 }
@@ -825,12 +837,16 @@ func (h *RuntimeHandler) update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "根表配置缺失"})
 		return
 	}
-	id := c.Param("pk")
 	var in runtimeRowInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if in.ID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id 不能为空"})
+		return
+	}
+	id := in.ID
 	pt, err := readPhysicalSchema(gdb, root.Physical)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -937,7 +953,18 @@ func (h *RuntimeHandler) delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "根表配置缺失"})
 		return
 	}
-	id := c.Param("pk")
+	var in struct {
+		ID string `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体需要 {\"id\": <主键>}: " + err.Error()})
+		return
+	}
+	if in.ID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id 不能为空"})
+		return
+	}
+	id := in.ID
 	pt, err := readPhysicalSchema(gdb, root.Physical)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

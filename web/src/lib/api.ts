@@ -403,7 +403,7 @@ export function listRuntimeRows(
     if (Object.keys(clean).length > 0) body.filters = clean;
   }
   return request<RuntimeRowResponse>(
-    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/list`,
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/list`,
     { method: "POST", body: JSON.stringify(body) },
   );
 }
@@ -413,7 +413,8 @@ export function getRuntimeRow(
   id: string | number,
 ): Promise<RowDetail> {
   return request<RowDetail>(
-    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/${encodeURIComponent(String(id))}`,
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/one`,
+    { method: "POST", body: JSON.stringify({ id }) },
   );
 }
 
@@ -421,7 +422,7 @@ export function createRuntimeRow(
   slug: string,
   input: RowMutationInput,
 ): Promise<unknown> {
-  return request(`${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows`, {
+  return request(`${RUNTIME_BASE}/${encodeURIComponent(slug)}/insert`, {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -433,8 +434,8 @@ export function updateRuntimeRow(
   input: RowMutationInput,
 ): Promise<unknown> {
   return request(
-    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/${encodeURIComponent(String(id))}`,
-    { method: "PUT", body: JSON.stringify(input) },
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/update`,
+    { method: "POST", body: JSON.stringify({ id, ...input }) },
   );
 }
 
@@ -443,8 +444,8 @@ export function deleteRuntimeRow(
   id: string | number,
 ): Promise<unknown> {
   return request(
-    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/rows/${encodeURIComponent(String(id))}`,
-    { method: "DELETE" },
+    `${RUNTIME_BASE}/${encodeURIComponent(slug)}/delete`,
+    { method: "POST", body: JSON.stringify({ id }) },
   );
 }
 

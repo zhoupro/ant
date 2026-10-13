@@ -438,7 +438,7 @@ function BasicTab({
           </p>
         ) : (
           <p className="text-[11px] text-muted-foreground">
-            将用于生成接口路径,如 <code className="font-mono">/api/runtime/{slug || "blog"}/rows</code>
+            将用于生成接口路径,如 <code className="font-mono">/api/runtime/{slug || "blog"}/list</code>
           </p>
         )}
       </div>
@@ -985,21 +985,21 @@ function buildApiList(slug: string, root: TableConfig | undefined): ApiEntry[] {
   const listBody = { limit: 50, offset: 0 };
   return [
     { key: "schema", method: "GET", path: `/api/runtime/${slug}/schema`, body: null },
-    { key: "rows_list", method: "POST", path: `/api/runtime/${slug}/rows/list`, body: listBody },
-    { key: "row_get", method: "GET", path: `/api/runtime/${slug}/rows/1`, body: null },
+    { key: "list", method: "POST", path: `/api/runtime/${slug}/list`, body: listBody },
+    { key: "one", method: "POST", path: `/api/runtime/${slug}/one`, body: { id: 1 } },
     {
-      key: "row_insert",
+      key: "insert",
       method: "POST",
-      path: `/api/runtime/${slug}/rows`,
+      path: `/api/runtime/${slug}/insert`,
       body: { values: sampleValues },
     },
     {
-      key: "row_update",
-      method: "PUT",
-      path: `/api/runtime/${slug}/rows/1`,
-      body: { values: sampleValues },
+      key: "update",
+      method: "POST",
+      path: `/api/runtime/${slug}/update`,
+      body: { id: 1, values: sampleValues },
     },
-    { key: "row_delete", method: "DELETE", path: `/api/runtime/${slug}/rows/1`, body: null },
+    { key: "delete", method: "POST", path: `/api/runtime/${slug}/delete`, body: { id: 1 } },
   ];
 }
 
