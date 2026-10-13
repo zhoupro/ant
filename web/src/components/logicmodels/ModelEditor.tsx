@@ -11,7 +11,9 @@ import {
   deleteModel,
   generateSlug,
   getModelTableSchema,
+  listAPITokens,
   listModelTables,
+  revealAPIToken,
   saveModel,
 } from "@/lib/api";
 import type {
@@ -803,6 +805,64 @@ interface PreviewTabProps {
 
 function PreviewTab({ slug, label, tables, relations, rootAlias }: PreviewTabProps) {
   const root = tables.find((t) => t.alias === rootAlias) ?? tables[0];
+  const [activeApi, setActiveApi] = useState<string | null>(null);
+  const [apiToken, setApiToken] = useState<{
+    plain: string;
+    prefix: string;
+    name: string;
+  } | null>(null);
+  const [apiTokenLoading, setApiTokenLoading] = useState(false);
+
+  // 拉取第一个有效 API 令牌的明文,curl 直接用 Bearer 鉴权。
+  // 静默失败:无令牌/无权限时,curl 自动回退到 Cookie 提示。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setApiTokenLoading(true);
+      try {
+        const tokens = await listAPITokens();
+        const now = Date.now();
+        const valid = tokens.find(
+          (t) =>
+            !t.revoked_at &&
+            (!t.expires_at || new Date(t.expires_at).getTime() > now),
+        );
+        if (!valid) return;
+        const r = await revealAPIToken(valid.id);
+        if (cancelled || r.revoked || r.expired) return;
+        setApiToken({ plain: r.plain, prefix: valid.prefix, name: valid.name });
+      } catch {
+        // 静默
+      } finally {
+        if (!cancelled) setApiTokenLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const apis = useMemo(() => buildApiList(slug || "slug", root), [slug, root]);
+  const active = activeApi ? apis.find((a) => a.key === activeApi) : null;
+  const baseUrl = useMemo(() => {
+    if (typeof window === "undefined") return "http://localhost:8080";
+    return window.location.origin;
+  }, []);
+  const curlText = useMemo(
+    () => (active ? renderCurl(active, baseUrl, apiToken?.plain ?? null) : ""),
+    [active, baseUrl, apiToken],
+  );
+
+  const copyCurl = useCallback(async () => {
+    if (!curlText) return;
+    try {
+      await navigator.clipboard.writeText(curlText);
+      toast.success("已复制 curl");
+    } catch {
+      toast.error("复制失败,请手动选中复制");
+    }
+  }, [curlText]);
+
   return (
     <div className="space-y-3 text-xs">
       <div className="rounded-md border bg-muted/30 p-3">
@@ -814,14 +874,64 @@ function PreviewTab({ slug, label, tables, relations, rootAlias }: PreviewTabPro
       <div className="rounded-md border bg-card p-3">
         <div className="text-[11px] text-muted-foreground">自动生成的接口</div>
         <ul className="mt-1 space-y-0.5 font-mono">
-          <li>GET /api/runtime/{slug || "slug"}/schema</li>
-          <li>POST /api/runtime/{slug || "slug"}/rows/list</li>
-          <li>GET /api/runtime/{slug || "slug"}/rows/:id</li>
-          <li>POST /api/runtime/{slug || "slug"}/rows</li>
-          <li>PUT /api/runtime/{slug || "slug"}/rows/:id</li>
-          <li>DELETE /api/runtime/{slug || "slug"}/rows/:id</li>
+          {apis.map((api) => (
+            <li key={api.key}>
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveApi((prev) => (prev === api.key ? null : api.key))
+                }
+                className={cn(
+                  "block w-full rounded px-1 text-left transition-colors hover:bg-muted",
+                  activeApi === api.key && "bg-muted",
+                )}
+                aria-expanded={activeApi === api.key}
+              >
+                <span
+                  className={cn(
+                    "mr-2 inline-block w-14 text-center font-bold",
+                    methodColor(api.method),
+                  )}
+                >
+                  {api.method}
+                </span>
+                <span>{api.path}</span>
+              </button>
+            </li>
+          ))}
         </ul>
       </div>
+      {active ? (
+        <div className="rounded-md border bg-card p-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] text-muted-foreground">
+              curl · <span className={cn("font-bold", methodColor(active.method))}>{active.method}</span> {active.path}
+            </div>
+            <Button size="xs" variant="outline" onClick={() => void copyCurl()}>
+              复制
+            </Button>
+          </div>
+          <pre className="mt-2 overflow-x-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed">
+            <code>{curlText}</code>
+          </pre>
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            {apiToken ? (
+              <>
+                鉴权已自动填入第一个有效 API 令牌:
+                <code className="font-mono"> {apiToken.name}</code>(
+                <code className="font-mono">{apiToken.prefix}…</code>)。
+              </>
+            ) : apiTokenLoading ? (
+              <>正在获取 API 令牌…</>
+            ) : (
+              <>
+                未找到有效 API 令牌,curl 使用 <code className="font-mono">mc_session</code> cookie 占位;
+                可到「API 令牌」页创建一个,或替换 <code className="font-mono">&lt;your-session-token&gt;</code> 为实际值。
+              </>
+            )}
+          </p>
+        </div>
+      ) : null}
       {root ? (
         <div className="rounded-md border bg-card p-3">
           <div className="text-[11px] text-muted-foreground">根表字段</div>
@@ -860,6 +970,122 @@ function PreviewTab({ slug, label, tables, relations, rootAlias }: PreviewTabPro
       </div>
     </div>
   );
+}
+
+interface ApiEntry {
+  key: string;
+  method: string;
+  path: string;
+  // null = 没有 body;否则序列化为 JSON 字符串作为 -d 参数。
+  body: unknown | null;
+}
+
+function buildApiList(slug: string, root: TableConfig | undefined): ApiEntry[] {
+  const sampleValues = buildSampleValues(root);
+  const listBody = { limit: 50, offset: 0 };
+  return [
+    { key: "schema", method: "GET", path: `/api/runtime/${slug}/schema`, body: null },
+    { key: "rows_list", method: "POST", path: `/api/runtime/${slug}/rows/list`, body: listBody },
+    { key: "row_get", method: "GET", path: `/api/runtime/${slug}/rows/1`, body: null },
+    {
+      key: "row_insert",
+      method: "POST",
+      path: `/api/runtime/${slug}/rows`,
+      body: { values: sampleValues },
+    },
+    {
+      key: "row_update",
+      method: "PUT",
+      path: `/api/runtime/${slug}/rows/1`,
+      body: { values: sampleValues },
+    },
+    { key: "row_delete", method: "DELETE", path: `/api/runtime/${slug}/rows/1`, body: null },
+  ];
+}
+
+// buildSampleValues 根据根表的可编辑字段(非主键)生成示意 payload,
+// 用户点开 curl 时能直接看到一份可改成的 -d 模板。
+function buildSampleValues(root: TableConfig | undefined): Record<string, unknown> {
+  if (!root) return {};
+  const obj: Record<string, unknown> = {};
+  for (const f of root.fields) {
+    if (!f.editable) continue;
+    if (f.physical === root.primary_key) continue;
+    switch (f.business_type) {
+      case "text":
+      case "longtext":
+      case "richtext":
+      case "url":
+      case "email":
+      case "phone":
+      case "color":
+        obj[f.physical] = "string";
+        break;
+      case "number":
+      case "integer":
+        obj[f.physical] = 0;
+        break;
+      case "boolean":
+        obj[f.physical] = true;
+        break;
+      case "date":
+        obj[f.physical] = "2026-10-13";
+        break;
+      case "datetime":
+      case "countdown":
+        obj[f.physical] = "2026-10-13 20:00:00";
+        break;
+      case "json":
+        obj[f.physical] = {};
+        break;
+      case "select":
+      case "multiselect":
+        obj[f.physical] = f.options?.[0]?.value ?? "";
+        break;
+      case "image":
+      case "file":
+        obj[f.physical] = "/uploads/1";
+        break;
+      case "images":
+        obj[f.physical] = ["/uploads/1"];
+        break;
+      case "cron":
+        obj[f.physical] = "*/5 * * * *";
+        break;
+    }
+  }
+  return obj;
+}
+
+function renderCurl(api: ApiEntry, baseUrl: string, token: string | null): string {
+  const lines: string[] = [];
+  lines.push(`curl -X ${api.method} '${baseUrl}${api.path}' \\`);
+  if (token) {
+    lines.push(`  -H 'Authorization: Bearer ${token}'`);
+  } else {
+    lines.push(`  -H 'Cookie: mc_session=<your-session-token>'`);
+  }
+  if (api.body !== null) {
+    lines[lines.length - 1] += " \\";
+    lines.push(`  -H 'Content-Type: application/json' \\`);
+    lines.push(`  -d '${JSON.stringify(api.body)}'`);
+  }
+  return lines.join("\n");
+}
+
+function methodColor(method: string): string {
+  switch (method.toUpperCase()) {
+    case "GET":
+      return "text-sky-600";
+    case "POST":
+      return "text-emerald-600";
+    case "PUT":
+      return "text-amber-600";
+    case "DELETE":
+      return "text-rose-600";
+    default:
+      return "text-foreground/70";
+  }
 }
 
 interface TabsBarProps {
