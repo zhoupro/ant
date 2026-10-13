@@ -484,9 +484,9 @@ export function ModelRuntime({
                       ))}
                     </select>
                   ) : f.business_type === "date" ||
-                    f.business_type === "datetime" ? (
-                    <Input
-                      type={f.business_type === "date" ? "date" : "datetime-local"}
+                    f.business_type === "datetime" ||
+                    f.business_type === "countdown" ? (
+                    <select
                       value={filters[f.physical] ?? ""}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -498,8 +498,16 @@ export function ModelRuntime({
                         });
                         setOffset(0);
                       }}
-                      className="h-6 w-full px-1 text-[10px]"
-                    />
+                      className="h-6 w-full rounded border bg-background px-1 text-[10px]"
+                    >
+                      <option value="">全部</option>
+                      <option value="now+30s">大于当前 30 秒</option>
+                      <option value="now+1m">大于当前 1 分钟</option>
+                      <option value="now+5m">大于当前 5 分钟</option>
+                      <option value="now+15m">大于当前 15 分钟</option>
+                      <option value="now+1h">大于当前 1 小时</option>
+                      <option value="now+1d">大于当前 1 天</option>
+                    </select>
                   ) : (
                     <Input
                       type={
@@ -776,9 +784,102 @@ function CellValue({ value, field, onPreviewImage }: CellValueProps) {
       return <span className="font-mono text-[10px]">{summarize(value)}</span>;
     case "cron":
       return <CronCell value={String(value)} />;
+    case "datetime":
+      return <span>{formatDateTimeForDisplay(value)}</span>;
+    case "date":
+      return <span>{formatDateForDisplay(value)}</span>;
+    case "countdown":
+      return <CountdownCell target={parseDateLike(value)} />;
     default:
       return <span>{summarize(value)}</span>;
   }
+}
+
+function formatDateTimeForDisplay(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  // 历史数据可能是 "YYYY-MM-DDTHH:MM" / "YYYY-MM-DDTHH:MM:SS";统一展示成空格分隔。
+  return String(v).replace("T", " ");
+}
+
+function formatDateForDisplay(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  return String(v);
+}
+
+function toDateTimeLocalInput(raw: string): string {
+  // 把 "YYYY-MM-DD HH:MM[:SS]" / "YYYY-MM-DDTHH:MM[:SS]" 统一成 datetime-local 期望的 "YYYY-MM-DDTHH:MM"。
+  const s = raw.replace("T", " ").trim();
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/.exec(s);
+  if (!m) return "";
+  return `${m[1]}T${m[2]}`;
+}
+
+// parseDateLike 把 "YYYY-MM-DD HH:MM[:SS]" / "YYYY-MM-DDTHH:MM[:SS]" / "YYYY-MM-DD"
+// 解析为时间戳;无法解析返回 null。后端存的是本地时间字面值,所以按本地时区构造。
+function parseDateLike(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const s = String(v).replace("T", " ").trim();
+  if (!s) return null;
+  // 仅有 YYYY-MM-DD 时补午夜
+  const padded = /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s} 00:00:00` : s;
+  // 缺秒位补 ":00",以便 Date 能稳定解析。
+  const withSec = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(padded) ? `${padded}:00` : padded;
+  const ms = Date.parse(withSec);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+// formatCountdown 把毫秒差值格式化为人类可读的相对时间描述。
+// 正值 = 未来(还没开始),负值 = 过去(已过期)。
+function formatCountdown(diffMs: number): string {
+  const abs = Math.abs(diffMs);
+  const future = diffMs >= 0;
+  const sec = Math.floor(abs / 1000);
+  if (sec < 60) {
+    return future ? `${sec} 秒` : `已过 ${sec} 秒`;
+  }
+  const min = Math.floor(sec / 60);
+  if (min < 60) {
+    const remSec = sec % 60;
+    return future
+      ? remSec > 0
+        ? `${min} 分 ${remSec} 秒`
+        : `${min} 分钟`
+      : `已过 ${min} 分 ${remSec} 秒`;
+  }
+  const hr = Math.floor(min / 60);
+  if (hr < 24) {
+    const remMin = min % 60;
+    return future
+      ? remMin > 0
+        ? `${hr} 小时 ${remMin} 分`
+        : `${hr} 小时`
+      : `已过 ${hr} 小时 ${remMin} 分`;
+  }
+  const day = Math.floor(hr / 24);
+  const remHr = hr % 24;
+  return future
+    ? remHr > 0
+      ? `${day} 天 ${remHr} 小时`
+      : `${day} 天`
+    : `已过 ${day} 天 ${remHr} 小时`;
+}
+
+interface CountdownCellProps {
+  target: number | null;
+}
+
+// CountdownCell 每秒重新计算与当前时间的差值,使倒计时看起来在「走动」。
+function CountdownCell({ target }: CountdownCellProps) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (target === null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [target]);
+  if (target === null) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return <span className="font-mono text-[11px]">{formatCountdown(target - now)}</span>;
 }
 
 function summarize(v: unknown): string {
@@ -1242,6 +1343,10 @@ function RowFormDialog({
         seed[f.key] = raw;
         const pretty = formatJsonOrNull(raw) ?? raw;
         drafts[f.key] = pretty;
+      } else if (f.business_type === "datetime" || f.business_type === "countdown") {
+        // 后端存的可能是 "YYYY-MM-DD HH:MM:SS" / "YYYY-MM-DDTHH:MM[:SS]" 任一种;
+        // datetime-local 只接受 "YYYY-MM-DDTHH:MM"。
+        seed[f.key] = toDateTimeLocalInput(String(v));
       } else {
         seed[f.key] = String(v);
       }
@@ -1502,6 +1607,9 @@ function FieldInput({
         </div>
       );
     case "datetime":
+    case "countdown":
+      // countdown 底层就是 datetime 字面值,编辑 UI 复用 datetime-local,
+      // 显示时再由 CellValue 走 CountdownCell 计算与当前时间的差值。
       return (
         <div className="space-y-1">
           {common}
@@ -1719,6 +1827,7 @@ function coerceFromInput(raw: string, field: RuntimeField): unknown {
     case "boolean":
       return raw === "true";
     case "datetime":
+    case "countdown":
       return raw;
     default:
       return raw;

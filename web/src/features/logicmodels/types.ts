@@ -8,6 +8,7 @@ export type BusinessType =
   | "boolean"
   | "date"
   | "datetime"
+  | "countdown"
   | "image"
   | "images"
   | "file"

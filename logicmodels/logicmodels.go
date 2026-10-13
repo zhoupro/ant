@@ -292,6 +292,7 @@ func validateConfig(cfg *ModelConfig) error {
 func BusinessTypes() []string {
 	return []string{
 		"text", "longtext", "number", "integer", "boolean", "date", "datetime",
+		"countdown",
 		"image", "images", "file", "json", "richtext", "select", "multiselect",
 		"url", "email", "phone", "color", "cron",
 	}
@@ -301,13 +302,13 @@ func BusinessTypes() []string {
 const DefaultSentinelNow = "now"
 
 // HasDefault 判断字段是否在 insert 时应自动填充默认值。
-// 当前仅 date / datetime 支持。
+// 当前 date / datetime / countdown 支持(倒计时底层存 datetime 字面值)。
 func HasDefault(bt, def string) bool {
 	if def == "" {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(bt)) {
-	case "date", "datetime":
+	case "date", "datetime", "countdown":
 		return true
 	}
 	return false
@@ -319,10 +320,13 @@ func HasDefault(bt, def string) bool {
 func ResolveDefaultValue(bt, def string) any {
 	if def == DefaultSentinelNow {
 		now := time.Now()
-		if strings.ToLower(strings.TrimSpace(bt)) == "date" {
+		switch strings.ToLower(strings.TrimSpace(bt)) {
+		case "date":
 			return now.Format("2006-01-02")
+		default:
+			// datetime / countdown 都按 datetime 字面落库
+			return now.Format("2006-01-02 15:04:05")
 		}
-		return now.Format("2006-01-02 15:04:05")
 	}
 	return def
 }
@@ -339,7 +343,7 @@ func validateFieldDefault(bt, def string) error {
 		if _, err := time.Parse("2006-01-02", def); err != nil {
 			return fmt.Errorf("日期默认值格式错误,应为 YYYY-MM-DD")
 		}
-	case "datetime":
+	case "datetime", "countdown":
 		if def == DefaultSentinelNow {
 			return nil
 		}
@@ -380,6 +384,8 @@ func BusinessTypeLabel(t string) string {
 		return "日期"
 	case "datetime":
 		return "日期时间"
+	case "countdown":
+		return "倒计时"
 	case "image":
 		return "图片"
 	case "images":

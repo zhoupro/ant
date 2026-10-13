@@ -433,6 +433,24 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 		case strings.Contains(bt, "int") || strings.Contains(bt, "number") || strings.Contains(bt, "decimal") || strings.Contains(bt, "real") || strings.Contains(bt, "double") || strings.Contains(bt, "numeric"):
 			filterParts = append(filterParts, fmt.Sprintf("CAST(%s AS TEXT) = ?", quoteCol(colName)))
 			args = append(args, val)
+		case bt == "date" || bt == "datetime" || bt == "countdown":
+			// date / datetime 字段优先识别相对时间(now+30s、now-1h 等),
+			// 转为 SQLite datetime() 修饰符;datetime() 默认按 UTC 解读,
+			// 与写入时规范化后的本地时间字面值(无 'localtime' 修饰)同口径。
+			// 解析失败时回退为 LIKE 模糊匹配绝对时间。
+			if mod, ok := parseNowOffset(val); ok {
+				col := quoteCol(colName)
+				// 字面值是前端 datetime-local 提交的本地时间(如 "2026-10-13T20:20"),
+				// SQLite 默认按 UTC 解读;加 'utc' 反推成本地时间所对应的 UTC 时刻,
+				// 才能与 datetime('now', ...) 的 UTC 时间正确比较。
+				filterParts = append(filterParts, fmt.Sprintf(
+					"datetime(replace(%s, 'T', ' '), 'utc') > datetime('now', '%s')",
+					col, mod,
+				))
+				continue
+			}
+			filterParts = append(filterParts, fmt.Sprintf("CAST(%s AS TEXT) LIKE ?", quoteCol(colName)))
+			args = append(args, "%"+val+"%")
 		default:
 			filterParts = append(filterParts, fmt.Sprintf("CAST(%s AS TEXT) LIKE ?", quoteCol(colName)))
 			args = append(args, "%"+val+"%")
@@ -1050,6 +1068,27 @@ func coerceValue(v any, f logicmodels.FieldConfig) (any, error) {
 			return nil, nil
 		}
 		return v, nil
+	case "datetime", "countdown":
+		s, ok := v.(string)
+		if !ok {
+			return v, nil
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, nil
+		}
+		// 前端 datetime-local 提交 "YYYY-MM-DDTHH:MM",SQLite 会把 T 当
+		// 字面字符处理且与 "now" 比较时区错位;统一换成空格,SQLite datetime()
+		// 就能把字面值直接当 UTC(UTC) 比较,而 datetime('now') 同样返回 UTC。
+		// countdown 底层也是 datetime 字面,沿用同一规范化规则。
+		if i := strings.Index(s, "T"); i >= 0 {
+			s = s[:i] + " " + s[i+1:]
+		}
+		// 仅有 YYYY-MM-DD HH:MM 时补 ":00",datetime() 也能正常解析。
+		if len(s) == 16 {
+			s += ":00"
+		}
+		return s, nil
 	case "cron":
 		s, ok := v.(string)
 		if !ok {
@@ -1065,4 +1104,53 @@ func coerceValue(v any, f logicmodels.FieldConfig) (any, error) {
 		return s, nil
 	}
 	return v, nil
+}
+
+// parseNowOffset 把 "now+30s"、"now-1h"、"now+5" 这类相对时间表达式
+// 解析为 SQLite datetime() 修饰符(例如 "+30 seconds"),以便在 WHERE 中
+// 直接写 datetime(col, 'localtime') > datetime('now', 'localtime', '<mod>')。
+// 单位支持 s/m/h/d(默认 s);返回 ok=false 时调用方应回退到普通 LIKE 匹配。
+func parseNowOffset(val string) (string, bool) {
+	v := strings.ToLower(strings.TrimSpace(val))
+	if !strings.HasPrefix(v, "now") || len(v) <= 3 {
+		return "", false
+	}
+	rest := strings.TrimSpace(v[3:])
+	if rest == "" {
+		return "", false
+	}
+	sign := "+"
+	if rest[0] == '+' || rest[0] == '-' {
+		sign = string(rest[0])
+		rest = strings.TrimSpace(rest[1:])
+	}
+	if rest == "" {
+		return "", false
+	}
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return "", false
+	}
+	n, err := strconv.Atoi(rest[:end])
+	if err != nil || n < 0 {
+		return "", false
+	}
+	unit := strings.ToLower(strings.TrimSpace(rest[end:]))
+	var sql string
+	switch unit {
+	case "", "s":
+		sql = "seconds"
+	case "m":
+		sql = "minutes"
+	case "h":
+		sql = "hours"
+	case "d":
+		sql = "days"
+	default:
+		return "", false
+	}
+	return fmt.Sprintf("%s%d %s", sign, n, sql), true
 }
