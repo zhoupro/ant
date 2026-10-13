@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1184,72 +1184,326 @@ function isDateLike(bt: LMFieldConfig["business_type"]): boolean {
   return bt === "date" || bt === "datetime" || bt === "countdown";
 }
 
-// 预设的「相对当前时间」选项,与 ModelRuntime 筛选下拉一致。
-// 区间语义:左开右闭 col > lower AND col <= upper;最后一档上限开放。
-// 后端 parseNowRange 解析 "now+30s~now+1m" 这种格式生成 SQL。
-const DATE_OFFSET_PRESETS: { value: string; label: string }[] = [
-  { value: "now+0s~now+30s", label: "(0 秒, 30 秒]" },
-  { value: "now+30s~now+1m", label: "(30 秒, 1 分钟]" },
-  { value: "now+1m~now+5m", label: "(1 分钟, 5 分钟]" },
-  { value: "now+5m~now+15m", label: "(5 分钟, 15 分钟]" },
-  { value: "now+15m~now+1h", label: "(15 分钟, 1 小时]" },
-  { value: "now+1h~now+1d", label: "(1 小时, 1 天]" },
-  { value: "now+1d~", label: "(1 天, ∞)" },
+// 时间单位,与后端 now+Xs 语法一致。
+type TimeUnit = "s" | "m" | "h" | "d";
+// 相对方向:"+" = 未来(now 之后),"-" = 过去(now 之前)。
+type OffsetDir = "+" | "-";
+
+// 单位下拉的 8 个组合选项:方向 + 单位。value 形如 "+s" / "-m"。
+const OFFSET_OPTIONS: { value: string; label: string }[] = [
+  { value: "+s", label: "秒后" },
+  { value: "+m", label: "分钟后" },
+  { value: "+h", label: "小时后" },
+  { value: "+d", label: "天后" },
+  { value: "-s", label: "秒前" },
+  { value: "-m", label: "分钟前" },
+  { value: "-h", label: "小时前" },
+  { value: "-d", label: "天前" },
 ];
+
+// "now+30s" / "now-1h" -> { value, unit, dir };解析失败返回 null。
+function parseOffsetSpec(
+  spec: string,
+): { value: string; unit: TimeUnit; dir: OffsetDir } | null {
+  const m = /^now\s*([+-])\s*(\d+)\s*([smhd]?)$/i.exec(spec.trim());
+  if (!m) return null;
+  return {
+    dir: m[1] as OffsetDir,
+    value: m[2],
+    unit: (m[3]?.toLowerCase() || "s") as TimeUnit,
+  };
+}
+
+// "now+30s~now+1m" / "now-1h~now-30m" -> lower/upper;右侧为空表示无上限。
+function parseRuleKey(key: string): {
+  lower: { value: string; unit: TimeUnit; dir: OffsetDir };
+  upper: { value: string; unit: TimeUnit; dir: OffsetDir } | null;
+} | null {
+  const idx = key.indexOf("~");
+  if (idx < 0) return null;
+  const lower = parseOffsetSpec(key.slice(0, idx));
+  if (!lower) return null;
+  const upperPart = key.slice(idx + 1).trim();
+  if (!upperPart) return { lower, upper: null };
+  const upper = parseOffsetSpec(upperPart);
+  if (!upper) return null;
+  return { lower, upper };
+}
+
+function buildOffsetSpec(value: string, unit: TimeUnit, dir: OffsetDir): string {
+  return `now${dir}${value}${unit}`;
+}
+
+// 把用户填的起止值拼成规则 key(与后端 parseNowRange 的 now±Xs 约定一致)。
+function buildRuleKey(
+  lowerValue: string,
+  lowerUnit: TimeUnit,
+  lowerDir: OffsetDir,
+  upperValue: string,
+  upperUnit: TimeUnit,
+  upperDir: OffsetDir,
+  unbounded: boolean,
+): string | null {
+  if (lowerValue.trim() === "") return null;
+  const lo = buildOffsetSpec(lowerValue.trim(), lowerUnit, lowerDir);
+  if (unbounded) return `${lo}~`;
+  if (upperValue.trim() === "") return null;
+  return `${lo}~${buildOffsetSpec(upperValue.trim(), upperUnit, upperDir)}`;
+}
+
+interface ColorRuleDraft {
+  // 本地编辑用的稳定 id(规则 key 会随输入实时变化,不能当 React key)。
+  id: string;
+  lowerValue: string;
+  lowerUnit: TimeUnit;
+  lowerDir: OffsetDir;
+  upperValue: string;
+  upperUnit: TimeUnit;
+  upperDir: OffsetDir;
+  unbounded: boolean;
+  color: string;
+}
+
+let colorRuleDraftSeq = 0;
+function newDraftId(): string {
+  colorRuleDraftSeq += 1;
+  return `d${colorRuleDraftSeq}_${Date.now().toString(36)}`;
+}
+
+function offsetToMs(value: string, unit: TimeUnit, dir: OffsetDir): number {
+  const n = Number(value) || 0;
+  const mul =
+    unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : unit === "d" ? 86_400_000 : 1_000;
+  return (dir === "-" ? -1 : 1) * n * mul;
+}
+
+function rulesToDrafts(rules: Record<string, string>): ColorRuleDraft[] {
+  const out: ColorRuleDraft[] = [];
+  for (const [key, color] of Object.entries(rules)) {
+    const parsed = parseRuleKey(key);
+    if (!parsed) continue;
+    out.push({
+      id: newDraftId(),
+      lowerValue: parsed.lower.value,
+      lowerUnit: parsed.lower.unit,
+      lowerDir: parsed.lower.dir,
+      upperValue: parsed.upper?.value ?? "",
+      upperUnit: parsed.upper?.unit ?? "m",
+      upperDir: parsed.upper?.dir ?? "+",
+      unbounded: parsed.upper === null,
+      color,
+    });
+  }
+  // 按下界的实际毫秒数(带符号)排序:最负(最早)的排前面,便于阅读。
+  out.sort(
+    (a, b) =>
+      offsetToMs(a.lowerValue, a.lowerUnit, a.lowerDir) -
+      offsetToMs(b.lowerValue, b.lowerUnit, b.lowerDir),
+  );
+  return out;
+}
+
+function draftsToRules(drafts: ColorRuleDraft[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const d of drafts) {
+    const key = buildRuleKey(
+      d.lowerValue,
+      d.lowerUnit,
+      d.lowerDir,
+      d.upperValue,
+      d.upperUnit,
+      d.upperDir,
+      d.unbounded,
+    );
+    if (!key) continue;
+    out[key] = d.color;
+  }
+  return out;
+}
 
 interface ColorRulesEditorProps {
   rules: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
 }
 
+// ColorRulesEditor:动态增删「时间区间 -> 颜色」规则。
+// 区间语义为左开右闭 (lower, upper];勾选「无上限」时上界开放(差值 > lower 均命中)。
+// key 生成格式与后端 parseNowRange 的 "now+30s~now+1m" 约定保持一致。
 function ColorRulesEditor({ rules, onChange }: ColorRulesEditorProps) {
-  // 仅展示「相对当前时间」预设,用户为每个预设分配一个颜色;清空表示不染色。
+  const [drafts, setDrafts] = useState<ColorRuleDraft[]>(() =>
+    rulesToDrafts(rules),
+  );
+
+  // 外部 rules 被整体替换时(切换字段/重新打开弹窗)重新初始化。
+  // 用 ref 记录最近一次派发的 rules,避免自身 onChange 触发循环重置。
+  const lastEmittedRef = useRef<Record<string, string>>(rules);
+  useEffect(() => {
+    if (rules !== lastEmittedRef.current) {
+      lastEmittedRef.current = rules;
+      setDrafts(rulesToDrafts(rules));
+    }
+  }, [rules]);
+
+  const emit = (next: ColorRuleDraft[]) => {
+    setDrafts(next);
+    const nextRules = draftsToRules(next);
+    lastEmittedRef.current = nextRules;
+    onChange(nextRules);
+  };
+
+  const patchDraft = (id: string, patch: Partial<ColorRuleDraft>) => {
+    emit(drafts.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  };
+
   return (
-    <div className="ml-1 space-y-1 rounded-md border border-dashed bg-muted/20 p-2">
+    <div className="ml-1 space-y-1.5 rounded-md border border-dashed bg-muted/20 p-2">
       <div className="text-[10px] text-muted-foreground">
-        命中筛选时单元格颜色(留空=不染色)
+        命中筛选时单元格颜色(区间为左开右闭);支持"X 秒/分/时/天后"与"X 秒/分/时/天前",
+        未命中的记录不染色
       </div>
-      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-        {DATE_OFFSET_PRESETS.map((p) => {
-          const cur = rules[p.value] ?? "";
-          return (
-            <div key={p.value} className="flex items-center gap-1.5">
+      {drafts.length === 0 ? (
+        <p className="text-[10px] text-muted-foreground">
+          还没有规则,点下方「添加区间」创建。
+        </p>
+      ) : null}
+      {drafts.map((d) => (
+        <div key={d.id} className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="text-muted-foreground">(</span>
+          <input
+            type="number"
+            min={0}
+            value={d.lowerValue}
+            onChange={(e) => patchDraft(d.id, { lowerValue: e.target.value })}
+            className="h-6 w-14 rounded border bg-background px-1 text-[11px]"
+            placeholder="0"
+            aria-label="区间起点值"
+          />
+          <select
+            value={`${d.lowerDir}${d.lowerUnit}`}
+            onChange={(e) => {
+              const v = e.target.value;
+              patchDraft(d.id, {
+                lowerDir: v[0] as OffsetDir,
+                lowerUnit: v.slice(1) as TimeUnit,
+              });
+            }}
+            className="h-6 rounded border bg-background text-[11px]"
+            aria-label="起点方向与单位"
+          >
+            {OFFSET_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-muted-foreground">,</span>
+          {d.unbounded ? (
+            <span className="px-1 text-muted-foreground">∞</span>
+          ) : (
+            <>
               <input
-                type="color"
-                value={cur || "#ffffff"}
+                type="number"
+                min={0}
+                value={d.upperValue}
+                onChange={(e) =>
+                  patchDraft(d.id, { upperValue: e.target.value })
+                }
+                className="h-6 w-14 rounded border bg-background px-1 text-[11px]"
+                placeholder="30"
+                aria-label="区间终点值"
+              />
+              <select
+                value={`${d.upperDir}${d.upperUnit}`}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v.toLowerCase() === "#ffffff") {
-                    const { [p.value]: _drop, ...rest } = rules;
-                    void _drop;
-                    onChange(rest);
-                  } else {
-                    onChange({ ...rules, [p.value]: v });
-                  }
+                  patchDraft(d.id, {
+                    upperDir: v[0] as OffsetDir,
+                    upperUnit: v.slice(1) as TimeUnit,
+                  });
                 }}
-                className="h-5 w-7 cursor-pointer rounded border bg-background p-0"
-                aria-label={`${p.label} 颜色`}
-                title={cur ? `${p.label} -> ${cur}` : `${p.label} 未配置`}
-              />
-              <span className="flex-1 text-[11px] text-muted-foreground">
-                {p.label}
-              </span>
-              {cur ? (
-                <button
-                  type="button"
-                  className="text-[10px] text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    const { [p.value]: _drop, ...rest } = rules;
-                    void _drop;
-                    onChange(rest);
-                  }}
-                >
-                  清除
-                </button>
-              ) : null}
-            </div>
-          );
-        })}
+                className="h-6 rounded border bg-background text-[11px]"
+                aria-label="终点方向与单位"
+              >
+                {OFFSET_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          <span className="text-muted-foreground">]</span>
+          <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={d.unbounded}
+              onChange={(e) => patchDraft(d.id, { unbounded: e.target.checked })}
+            />
+            无上限
+          </label>
+          <input
+            type="color"
+            value={d.color || "#3b82f6"}
+            onChange={(e) => patchDraft(d.id, { color: e.target.value })}
+            className="h-5 w-7 cursor-pointer rounded border bg-background p-0"
+            aria-label="区间颜色"
+          />
+          <button
+            type="button"
+            className="text-[10px] text-muted-foreground hover:text-foreground"
+            onClick={() => emit(drafts.filter((x) => x.id !== d.id))}
+          >
+            删除
+          </button>
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          onClick={() =>
+            emit([
+              ...drafts,
+              {
+                id: newDraftId(),
+                lowerValue: "0",
+                lowerUnit: "s",
+                lowerDir: "+",
+                upperValue: "30",
+                upperUnit: "s",
+                upperDir: "+",
+                unbounded: false,
+                color: "#3b82f6",
+              },
+            ])
+          }
+        >
+          + 未来区间
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          onClick={() =>
+            emit([
+              ...drafts,
+              {
+                id: newDraftId(),
+                lowerValue: "30",
+                lowerUnit: "m",
+                lowerDir: "-",
+                upperValue: "0",
+                upperUnit: "s",
+                upperDir: "-",
+                unbounded: false,
+                color: "#f59e0b",
+              },
+            ])
+          }
+        >
+          + 过去区间
+        </Button>
       </div>
     </div>
   );

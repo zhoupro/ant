@@ -43,18 +43,47 @@ import type {
 
 const RUNTIME_STORAGE_PREFIX = "mc:runtime:";
 
-// 筛选下拉:单值 "now+Ns",后端 SQL 是 col > now+Ns(命中所有大于此偏移的记录)。
-// 与 ModelEditor 中的颜色规则编辑器的"区间 key"独立:filter 用单值,
-// 颜色规则按"差值落在哪个区间"分档。
-const DATE_FILTER_PRESETS: { value: string; label: string }[] = [
-  { value: "now+0s", label: "大于当前 0 秒" },
-  { value: "now+30s", label: "大于当前 30 秒" },
-  { value: "now+1m", label: "大于当前 1 分钟" },
-  { value: "now+5m", label: "大于当前 5 分钟" },
-  { value: "now+15m", label: "大于当前 15 分钟" },
-  { value: "now+1h", label: "大于当前 1 小时" },
-  { value: "now+1d", label: "大于当前 1 天" },
-];
+// 把 "now+30s" / "now-30m" 这类单值偏移转成下拉展示用的中文标签。
+function specToLabel(spec: string): string {
+  const m = /^now\s*([+-])\s*(\d+)\s*([smhd]?)$/i.exec(spec.trim());
+  if (!m) return spec;
+  const n = m[2];
+  const unit = { s: "秒", m: "分钟", h: "小时", d: "天" }[
+    (m[3]?.toLowerCase() || "s") as "s" | "m" | "h" | "d"
+  ];
+  return m[1] === "-"
+    ? `大于 ${n} ${unit}前`
+    : `大于当前 ${n} ${unit}`;
+}
+
+// 从字段的 color_rules 派生筛选下拉选项:每个区间的**下界**作为一个"大于"筛选值,
+// 颜色与区间一致。选项不再写死,完全跟随颜色规则配置。
+function deriveFilterOptions(
+  rules: Record<string, string> | undefined,
+): { value: string; label: string; color: string }[] {
+  if (!rules) return [];
+  const byValue = new Map<string, { value: string; label: string; color: string; ms: number }>();
+  for (const [key, color] of Object.entries(rules)) {
+    const idx = key.indexOf("~");
+    if (idx < 0) continue;
+    const lower = key.slice(0, idx).trim();
+    if (!lower) continue;
+    const ms = nowOffsetToMs(lower);
+    if (ms === null) continue;
+    // 同一 lower 多条规则时保留首个,避免重复选项。
+    if (!byValue.has(lower)) {
+      byValue.set(lower, {
+        value: lower,
+        label: specToLabel(lower),
+        color,
+        ms,
+      });
+    }
+  }
+  return Array.from(byValue.values())
+    .sort((a, b) => a.ms - b.ms)
+    .map(({ value, label, color }) => ({ value, label, color }));
+}
 
 // 把 "now+30s" 这种单值解析为相对当前的毫秒数,供染色区间比较用。
 function nowOffsetToMs(spec: string): number | null {
@@ -109,21 +138,6 @@ function matchColorRule(
   parsed.sort((a, b) => a.lo - b.lo);
   for (const r of parsed) {
     if (diffMs > r.lo && (r.hi === null || diffMs <= r.hi)) return r.color;
-  }
-  return undefined;
-}
-
-// 反向查找:给定筛选单值 "now+30s",找 color_rules 中以它为下界的那一档。
-// 用于在 select 选项前加 ● 标识,告诉用户"选这一档有颜色规则"。
-function findColorForFilter(
-  filterValue: string,
-  rules: Record<string, string> | undefined,
-): string | undefined {
-  if (!rules) return undefined;
-  for (const [key, color] of Object.entries(rules)) {
-    const idx = key.indexOf("~");
-    const lower = (idx < 0 ? key : key.slice(0, idx)).trim();
-    if (lower === filterValue) return color;
   }
   return undefined;
 }
@@ -1352,7 +1366,8 @@ interface DateFilterSelectProps {
 }
 
 // 自绘下拉:原生 <option> 不支持自定义颜色,改用 popover + 真实色块。
-// 当前选中的值对应 color_rules 区间时,在按钮右侧加一个色块,直观看到颜色。
+// 选项完全由字段的 color_rules 派生(区间下界 = "大于"筛选值,颜色同区间),
+// 与「编辑模型 → 颜色规则」中的区间配置保持一致,不再维护写死的预设列表。
 function DateFilterSelect({
   value,
   colorRules,
@@ -1370,10 +1385,8 @@ function DateFilterSelect({
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
-  const current = DATE_FILTER_PRESETS.find((p) => p.value === value);
-  const currentColor = current
-    ? findColorForFilter(current.value, colorRules)
-    : undefined;
+  const options = deriveFilterOptions(colorRules);
+  const current = options.find((p) => p.value === value);
   return (
     <div ref={ref} className="relative w-full">
       <button
@@ -1381,15 +1394,15 @@ function DateFilterSelect({
         onClick={() => setOpen((o) => !o)}
         className="flex h-6 w-full items-center gap-1 rounded border bg-background px-1 text-[10px]"
       >
-        {currentColor ? (
+        {current ? (
           <span
             aria-hidden
             className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border"
-            style={{ backgroundColor: currentColor }}
+            style={{ backgroundColor: current.color }}
           />
         ) : null}
         <span className="flex-1 truncate text-left">
-          {current ? current.label : "全部"}
+          {current ? current.label : value === "" ? "全部" : specToLabel(value)}
         </span>
         <span aria-hidden className="text-muted-foreground">▾</span>
       </button>
@@ -1411,33 +1424,32 @@ function DateFilterSelect({
             <span className="inline-block h-2.5 w-2.5 shrink-0" />
             <span>全部</span>
           </button>
-          {DATE_FILTER_PRESETS.map((p) => {
-            const c = findColorForFilter(p.value, colorRules);
-            return (
-              <button
-                key={p.value}
-                type="button"
-                role="option"
-                aria-selected={value === p.value}
-                onClick={() => {
-                  onChange(p.value);
-                  setOpen(false);
-                }}
-                className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-muted"
-              >
-                {c ? (
-                  <span
-                    aria-hidden
-                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border"
-                    style={{ backgroundColor: c }}
-                  />
-                ) : (
-                  <span className="inline-block h-2.5 w-2.5 shrink-0" />
-                )}
-                <span>{p.label}</span>
-              </button>
-            );
-          })}
+          {options.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              role="option"
+              aria-selected={value === p.value}
+              onClick={() => {
+                onChange(p.value);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-muted"
+            >
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border"
+                style={{ backgroundColor: p.color }}
+              />
+              <span>{p.label}</span>
+            </button>
+          ))}
+          {options.length === 0 ? (
+            <div className="px-1.5 py-1 text-[10px] text-muted-foreground">
+              还没有颜色规则。到「编辑模型 → 表/预览 → 颜色规则」配置区间后,
+              这里会自动出现对应筛选项。
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
