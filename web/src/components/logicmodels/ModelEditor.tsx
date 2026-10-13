@@ -1188,6 +1188,7 @@ function isDateLike(bt: LMFieldConfig["business_type"]): boolean {
 // 区间语义:左开右闭 col > lower AND col <= upper;最后一档上限开放。
 // 后端 parseNowRange 解析 "now+30s~now+1m" 这种格式生成 SQL。
 const DATE_OFFSET_PRESETS: { value: string; label: string }[] = [
+  { value: "now+0s~now+30s", label: "(0 秒, 30 秒]" },
   { value: "now+30s~now+1m", label: "(30 秒, 1 分钟]" },
   { value: "now+1m~now+5m", label: "(1 分钟, 5 分钟]" },
   { value: "now+5m~now+15m", label: "(5 分钟, 15 分钟]" },

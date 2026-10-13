@@ -114,7 +114,7 @@ export function HomeView({ onGoToSettings, activePageId }: HomeViewProps) {
   const subPages = activeTopLevel ? byParent.get(activeTopLevel.id) ?? [] : [];
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {!active ? (
         <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
           <span>首页</span>
@@ -130,7 +130,7 @@ export function HomeView({ onGoToSettings, activePageId }: HomeViewProps) {
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         {loading ? (
           <p className="p-6 text-center text-xs text-muted-foreground">加载中…</p>
         ) : !active ? (
@@ -153,7 +153,7 @@ export function HomeView({ onGoToSettings, activePageId }: HomeViewProps) {
             </div>
           </div>
         ) : active.model_slug ? (
-          <div className="p-2">
+          <div className="flex min-h-0 flex-1 flex-col p-2">
             <ModelRuntime
               slug={active.model_slug}
               onDeleted={async () => {

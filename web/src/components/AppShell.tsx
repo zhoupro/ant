@@ -37,7 +37,7 @@ export function AppShell({
     hasPermission(user, t.permission),
   );
   return (
-    <div className="min-h-svh bg-background">
+    <div className="flex min-h-svh flex-col bg-background">
       {!hideNav ? (
         <header className="sticky top-0 z-10 border-b border-border/60 bg-background/85 backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
@@ -108,8 +108,8 @@ export function AppShell({
       ) : null}
       <main
         className={cn(
-          "mx-auto flex max-w-3xl flex-col px-4 py-6",
-          hideNav && "h-svh py-0",
+          "mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col px-4 py-6",
+          hideNav && "py-0",
         )}
       >
         {children}

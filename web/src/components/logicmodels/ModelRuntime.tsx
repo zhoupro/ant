@@ -47,6 +47,7 @@ const RUNTIME_STORAGE_PREFIX = "mc:runtime:";
 // 与 ModelEditor 中的颜色规则编辑器的"区间 key"独立:filter 用单值,
 // 颜色规则按"差值落在哪个区间"分档。
 const DATE_FILTER_PRESETS: { value: string; label: string }[] = [
+  { value: "now+0s", label: "大于当前 0 秒" },
   { value: "now+30s", label: "大于当前 30 秒" },
   { value: "now+1m", label: "大于当前 1 分钟" },
   { value: "now+5m", label: "大于当前 5 分钟" },
@@ -657,7 +658,7 @@ export function ModelRuntime({
   const currentPage = total === 0 ? 0 : Math.floor((rows?.offset ?? 0) / limit) + 1;
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col space-y-3">
       {!hideHeader ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -786,7 +787,7 @@ export function ModelRuntime({
         </p>
       ) : null}
 
-      <div className="overflow-auto rounded-lg border bg-card">
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-muted/60 text-xs text-muted-foreground">
             <tr>
@@ -1253,7 +1254,7 @@ function CellValue({
     case "qrcode":
       return <QrcodeCell value={value} onOpenChange={onQrcodeOpenChange} />;
     default:
-      return <span>{summarize(value)}</span>;
+      return <span>{formatDisplayText(summarize(value))}</span>;
   }
 }
 
@@ -1543,6 +1544,19 @@ function summarize(v: unknown): string {
   return s.length > 80 ? s.slice(0, 77) + "…" : s;
 }
 
+// formatDisplayText 在 default 分支里对"长得像数字"的字符串做轻量格式化:
+// SQLite 存数字时往往带无意义的 .0 尾零(如 "66.0"),按数字展示更易读;
+// 非纯数字串(URL、邮箱等)原样返回,不受影响。
+function formatDisplayText(s: string): string {
+  const trimmed = s.trim();
+  if (trimmed === "") return s;
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return String(n);
+  }
+  return s;
+}
+
 function defaultHint(field: RuntimeField): string | undefined {
   const d = field.default;
   if (!d) return undefined;
@@ -1720,7 +1734,7 @@ function DetailValue({ value }: { value: unknown }) {
       </pre>
     );
   }
-  return <span>{String(value)}</span>;
+  return <span>{formatDisplayText(String(value))}</span>;
 }
 
 function DetailSelectValue({
