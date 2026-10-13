@@ -213,6 +213,27 @@ export function ModelEditor({
     setRelations((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
+  const updateField = useCallback(
+    (
+      tableAlias: string,
+      key: string,
+      patch: Partial<LMFieldConfig>,
+    ): void => {
+      setTables((prev) =>
+        prev.map((t) => {
+          if (t.alias !== tableAlias) return t;
+          return {
+            ...t,
+            fields: t.fields.map((f) =>
+              f.key === key ? { ...f, ...patch } : f,
+            ),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
   const handleSubmit = async () => {
     setError(null);
     if (!slugValid) {
@@ -369,6 +390,7 @@ export function ModelEditor({
             removeTable={removeTable}
             rootAlias={rootAlias || tables[0]?.alias || ""}
             setRootAlias={setRootAlias}
+            updateField={updateField}
           />
         ) : tab === "relations" ? (
           <RelationsTab
@@ -385,6 +407,7 @@ export function ModelEditor({
             tables={tables}
             relations={relations}
             rootAlias={rootAlias || tables[0]?.alias || ""}
+            updateField={updateField}
           />
         )}
       </div>
@@ -473,10 +496,12 @@ interface TablesTabProps {
   removeTable: (alias: string) => void;
   rootAlias: string;
   setRootAlias: (v: string) => void;
+  updateField: (tableAlias: string, key: string, patch: Partial<LMFieldConfig>) => void;
 }
 
 // 「表」Tab 故意只做"加入物理表 / 选根表 / 移除物理表"三件事,
 // 不暴露字段业务类型 / 默认值等细项 —— 这些都在「数据库」标签下编辑。
+// 字段在「数据库」里编辑完,这里再展开"颜色规则"等运行时配置。
 function TablesTab({
   tables,
   physicalTables,
@@ -486,7 +511,9 @@ function TablesTab({
   removeTable,
   rootAlias,
   setRootAlias,
+  updateField,
 }: TablesTabProps) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
     <div className="space-y-4">
       <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
@@ -561,45 +588,98 @@ function TablesTab({
               <li
                 key={t.alias}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg border bg-card px-3 py-2",
+                  "rounded-lg border bg-card",
                   rootAlias === t.alias && "border-foreground/30",
                 )}
               >
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex size-6 shrink-0 items-center justify-center rounded-md border text-xs",
-                    rootAlias === t.alias
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border text-muted-foreground hover:bg-muted",
-                  )}
-                  onClick={() => setRootAlias(t.alias)}
-                  aria-label={rootAlias === t.alias ? "主表" : "设为主表"}
-                  title={rootAlias === t.alias ? "主表" : "设为主表"}
-                >
-                  ★
-                </button>
-                <div className="flex flex-1 flex-wrap items-center gap-2">
-                  <span className="font-medium">{t.label}</span>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {t.physical}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    ({t.fields.length} 字段)
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    主键 {t.primary_key}
-                  </span>
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex size-6 shrink-0 items-center justify-center rounded-md border text-xs",
+                      rootAlias === t.alias
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border text-muted-foreground hover:bg-muted",
+                    )}
+                    onClick={() => setRootAlias(t.alias)}
+                    aria-label={rootAlias === t.alias ? "主表" : "设为主表"}
+                    title={rootAlias === t.alias ? "主表" : "设为主表"}
+                  >
+                    ★
+                  </button>
+                  <div className="flex flex-1 flex-wrap items-center gap-2">
+                    <span className="font-medium">{t.label}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {t.physical}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      ({t.fields.length} 字段)
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      主键 {t.primary_key}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    onClick={() =>
+                      setExpanded((prev) => ({ ...prev, [t.alias]: !prev[t.alias] }))
+                    }
+                    aria-expanded={!!expanded[t.alias]}
+                  >
+                    {expanded[t.alias] ? "收起" : "颜色规则"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => removeTable(t.alias)}
+                    aria-label="移除表"
+                  >
+                    <Trash2 className="size-3.5 text-destructive" />
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => removeTable(t.alias)}
-                  aria-label="移除表"
-                >
-                  <Trash2 className="size-3.5 text-destructive" />
-                </Button>
+                {expanded[t.alias] ? (
+                  <div className="space-y-2 border-t px-3 py-2">
+                    {t.fields.length === 0 ? (
+                      <p className="text-[10px] text-muted-foreground">
+                        该表还没有字段,先到「数据库」标签下给表添加字段。
+                      </p>
+                    ) : (
+                      t.fields
+                        .filter((f) => isDateLike(f.business_type))
+                        .map((f) => (
+                          <div key={f.key} className="space-y-1">
+                            <div className="flex items-center gap-1 text-[10px]">
+                              <span className="font-mono">{f.physical}</span>
+                              <span className="text-muted-foreground">
+                                [{f.business_type}]
+                              </span>
+                              {f.required ? (
+                                <span className="text-destructive">*</span>
+                              ) : null}
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-muted-foreground">
+                                {f.label}
+                              </span>
+                            </div>
+                            <ColorRulesEditor
+                              rules={f.color_rules ?? {}}
+                              onChange={(rules) =>
+                                updateField(t.alias, f.key, { color_rules: rules })
+                              }
+                            />
+                          </div>
+                        ))
+                    )}
+                    {t.fields.some((f) => isDateLike(f.business_type)) ? null : (
+                      <p className="text-[10px] text-muted-foreground">
+                        本表没有 date / datetime / countdown 字段,无可配置颜色规则。
+                      </p>
+                    )}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -801,9 +881,10 @@ interface PreviewTabProps {
   tables: TableConfig[];
   relations: RelationConfig[];
   rootAlias: string;
+  updateField: (tableAlias: string, key: string, patch: Partial<LMFieldConfig>) => void;
 }
 
-function PreviewTab({ slug, label, tables, relations, rootAlias }: PreviewTabProps) {
+function PreviewTab({ slug, label, tables, relations, rootAlias, updateField }: PreviewTabProps) {
   const root = tables.find((t) => t.alias === rootAlias) ?? tables[0];
   const [activeApi, setActiveApi] = useState<string | null>(null);
   const [apiToken, setApiToken] = useState<{
@@ -935,15 +1016,25 @@ function PreviewTab({ slug, label, tables, relations, rootAlias }: PreviewTabPro
       {root ? (
         <div className="rounded-md border bg-card p-3">
           <div className="text-[11px] text-muted-foreground">根表字段</div>
-          <div className="mt-1 space-y-0.5">
+          <div className="mt-1 space-y-2">
             {root.fields.map((f) => (
-              <div key={f.key} className="flex items-center gap-1">
-                <span className="font-mono">{f.key}</span>
-                <span className="text-[10px] text-muted-foreground">
-                  [{f.business_type}]
-                </span>
-                {f.required ? <span className="text-destructive">*</span> : null}
-                {!f.editable ? <span className="text-[10px]">只读</span> : null}
+              <div key={f.key} className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <span className="font-mono">{f.key}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    [{f.business_type}]
+                  </span>
+                  {f.required ? <span className="text-destructive">*</span> : null}
+                  {!f.editable ? <span className="text-[10px]">只读</span> : null}
+                </div>
+                {isDateLike(f.business_type) ? (
+                  <ColorRulesEditor
+                    rules={f.color_rules ?? {}}
+                    onChange={(rules) =>
+                      updateField(root.alias, f.key, { color_rules: rules })
+                    }
+                  />
+                ) : null}
               </div>
             ))}
           </div>
@@ -1086,6 +1177,81 @@ function methodColor(method: string): string {
     default:
       return "text-foreground/70";
   }
+}
+
+// 日期/倒计时类字段支持按筛选值配置颜色,命中时高亮对应单元格。
+function isDateLike(bt: LMFieldConfig["business_type"]): boolean {
+  return bt === "date" || bt === "datetime" || bt === "countdown";
+}
+
+// 预设的「相对当前时间」选项,与 ModelRuntime 筛选下拉一致。
+// 区间语义:左开右闭 col > lower AND col <= upper;最后一档上限开放。
+// 后端 parseNowRange 解析 "now+30s~now+1m" 这种格式生成 SQL。
+const DATE_OFFSET_PRESETS: { value: string; label: string }[] = [
+  { value: "now+30s~now+1m", label: "(30 秒, 1 分钟]" },
+  { value: "now+1m~now+5m", label: "(1 分钟, 5 分钟]" },
+  { value: "now+5m~now+15m", label: "(5 分钟, 15 分钟]" },
+  { value: "now+15m~now+1h", label: "(15 分钟, 1 小时]" },
+  { value: "now+1h~now+1d", label: "(1 小时, 1 天]" },
+  { value: "now+1d~", label: "(1 天, ∞)" },
+];
+
+interface ColorRulesEditorProps {
+  rules: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+}
+
+function ColorRulesEditor({ rules, onChange }: ColorRulesEditorProps) {
+  // 仅展示「相对当前时间」预设,用户为每个预设分配一个颜色;清空表示不染色。
+  return (
+    <div className="ml-1 space-y-1 rounded-md border border-dashed bg-muted/20 p-2">
+      <div className="text-[10px] text-muted-foreground">
+        命中筛选时单元格颜色(留空=不染色)
+      </div>
+      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+        {DATE_OFFSET_PRESETS.map((p) => {
+          const cur = rules[p.value] ?? "";
+          return (
+            <div key={p.value} className="flex items-center gap-1.5">
+              <input
+                type="color"
+                value={cur || "#ffffff"}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v.toLowerCase() === "#ffffff") {
+                    const { [p.value]: _drop, ...rest } = rules;
+                    void _drop;
+                    onChange(rest);
+                  } else {
+                    onChange({ ...rules, [p.value]: v });
+                  }
+                }}
+                className="h-5 w-7 cursor-pointer rounded border bg-background p-0"
+                aria-label={`${p.label} 颜色`}
+                title={cur ? `${p.label} -> ${cur}` : `${p.label} 未配置`}
+              />
+              <span className="flex-1 text-[11px] text-muted-foreground">
+                {p.label}
+              </span>
+              {cur ? (
+                <button
+                  type="button"
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    const { [p.value]: _drop, ...rest } = rules;
+                    void _drop;
+                    onChange(rest);
+                  }}
+                >
+                  清除
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 interface TabsBarProps {

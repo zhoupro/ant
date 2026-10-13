@@ -60,3 +60,34 @@ func TestSplitCSV(t *testing.T) {
 		}
 	}
 }
+
+func TestParseNowRange(t *testing.T) {
+	cases := []struct {
+		in             string
+		wantLower      string
+		wantUpper      string
+		wantOK         bool
+	}{
+		// 区间形式:左开右闭 (col > lower AND col <= upper)
+		{"now+30s~now+1m", "+30 seconds", "+1 minutes", true},
+		{"now+1m~now+5m", "+1 minutes", "+5 minutes", true},
+		{"now+1h~now+1d", "+1 hours", "+1 days", true},
+		{"now+5~now+15", "+5 seconds", "+15 seconds", true},
+		// 半开区间:右侧空 = 开放上限 (col > lower)
+		{"now+1d~", "+1 days", "", true},
+		{"now+30s~", "+30 seconds", "", true},
+		// 无法解析的情况
+		{"now+30s", "", "", false},        // 单值走 parseNowOffset
+		{"~now+1m", "", "", false},        // 必须有左侧
+		{"now+30s~bad", "", "", false},     // 右侧无效
+		{"now+30x~now+1m", "", "", false},  // 左侧单位无效
+		{"", "", "", false},
+	}
+	for _, c := range cases {
+		lo, up, ok := parseNowRange(c.in)
+		if ok != c.wantOK || lo != c.wantLower || up != c.wantUpper {
+			t.Errorf("parseNowRange(%q) = (%q, %q, %v), want (%q, %q, %v)",
+				c.in, lo, up, ok, c.wantLower, c.wantUpper, c.wantOK)
+		}
+	}
+}

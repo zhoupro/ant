@@ -47,6 +47,7 @@ type runtimeField struct {
 	Placeholder  string                   `json:"placeholder,omitempty"`
 	Options      []logicmodels.SelectOption `json:"options,omitempty"`
 	Default      string                   `json:"default,omitempty"`
+	ColorRules   map[string]string         `json:"color_rules,omitempty"`
 }
 
 type runtimeTable struct {
@@ -174,6 +175,7 @@ func (h *RuntimeHandler) schema(c *gin.Context) {
 				Placeholder:  f.Placeholder,
 				Options:      f.Options,
 				Default:      f.Default,
+				ColorRules:   f.ColorRules,
 			})
 		}
 		sort.SliceStable(rt.Fields, func(i, j int) bool {
@@ -323,6 +325,7 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 			"placeholder":   f.Placeholder,
 			"options":       f.Options,
 			"default":       f.Default,
+			"color_rules":   f.ColorRules,
 		})
 	}
 
@@ -434,15 +437,33 @@ func (h *RuntimeHandler) rows(c *gin.Context) {
 			filterParts = append(filterParts, fmt.Sprintf("CAST(%s AS TEXT) = ?", quoteCol(colName)))
 			args = append(args, val)
 		case bt == "date" || bt == "datetime" || bt == "countdown":
-			// date / datetime 字段优先识别相对时间(now+30s、now-1h 等),
-			// 转为 SQLite datetime() 修饰符;datetime() 默认按 UTC 解读,
+			// date / datetime 字段优先识别相对时间区间(now+30s~now+1m),
+			// 转为 SQLite datetime() 比较;datetime() 默认按 UTC 解读,
 			// 与写入时规范化后的本地时间字面值(无 'localtime' 修饰)同口径。
 			// 解析失败时回退为 LIKE 模糊匹配绝对时间。
-			if mod, ok := parseNowOffset(val); ok {
+			if lower, upper, ok := parseNowRange(val); ok {
 				col := quoteCol(colName)
 				// 字面值是前端 datetime-local 提交的本地时间(如 "2026-10-13T20:20"),
 				// SQLite 默认按 UTC 解读;加 'utc' 反推成本地时间所对应的 UTC 时刻,
 				// 才能与 datetime('now', ...) 的 UTC 时间正确比较。
+				parts := []string{}
+				parts = append(parts, fmt.Sprintf(
+					"datetime(replace(%s, 'T', ' '), 'utc') > datetime('now', '%s')",
+					col, lower,
+				))
+				if upper != "" {
+					parts = append(parts, fmt.Sprintf(
+						"datetime(replace(%s, 'T', ' '), 'utc') <= datetime('now', '%s')",
+						col, upper,
+					))
+				}
+				filterParts = append(filterParts, strings.Join(parts, " AND "))
+				continue
+			}
+			if mod, ok := parseNowOffset(val); ok {
+				// 兼容旧格式:单 now+30s 仍按 "> now+30s" 处理,
+				// 避免老 filter 值突然失配。
+				col := quoteCol(colName)
 				filterParts = append(filterParts, fmt.Sprintf(
 					"datetime(replace(%s, 'T', ' '), 'utc') > datetime('now', '%s')",
 					col, mod,
@@ -1196,6 +1217,31 @@ func parseNowOffset(val string) (string, bool) {
 		return "", false
 	}
 	return fmt.Sprintf("%s%d %s", sign, n, sql), true
+}
+
+// parseNowRange 把 "now+30s~now+1m" 形式的相对时间区间解析为
+// (lower, upper) 两个 SQLite datetime() 修饰符;左侧必须存在,右侧可空(开放上限)。
+// 不识别 "~" 时返回 ok=false,调用方应回退到 parseNowOffset / LIKE。
+func parseNowRange(val string) (string, string, bool) {
+	v := strings.ToLower(strings.TrimSpace(val))
+	idx := strings.Index(v, "~")
+	if idx < 0 {
+		return "", "", false
+	}
+	left := strings.TrimSpace(v[:idx])
+	right := strings.TrimSpace(v[idx+1:])
+	lower, ok := parseNowOffset(left)
+	if !ok {
+		return "", "", false
+	}
+	if right == "" {
+		return lower, "", true
+	}
+	upper, ok := parseNowOffset(right)
+	if !ok {
+		return "", "", false
+	}
+	return lower, upper, true
 }
 
 // splitCSV 把 "col1, col2,col3" 这种字符串拆成 []string,自动 trim 空项;

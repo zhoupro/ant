@@ -1,4 +1,5 @@
 import { BookOpen, LogOut } from "lucide-react";
+import { NavLink } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { hasPermission } from "@/lib/api";
@@ -21,8 +22,6 @@ export type HomeTab =
 
 interface AppShellProps {
   user: AuthUser;
-  active: HomeTab;
-  onTabChange: (tab: HomeTab) => void;
   onLogout: () => void;
   children: React.ReactNode;
   hideNav?: boolean;
@@ -30,8 +29,6 @@ interface AppShellProps {
 
 export function AppShell({
   user,
-  active,
-  onTabChange,
   onLogout,
   children,
   hideNav = false,
@@ -90,19 +87,20 @@ export function AppShell({
           <nav className="mx-auto max-w-3xl overflow-x-auto px-2 pb-2">
             <div className="flex w-max gap-1">
               {visibleTabs.map((t) => (
-                <button
+                <NavLink
                   key={t.key}
-                  type="button"
-                  onClick={() => onTabChange(t.key as HomeTab)}
-                  className={cn(
-                    "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                    active === t.key
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
+                  to={`/${t.key}`}
+                  className={({ isActive }) =>
+                    cn(
+                      "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      isActive
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )
+                  }
                 >
                   {t.label}
-                </button>
+                </NavLink>
               ))}
             </div>
           </nav>

@@ -20,7 +20,8 @@ export type BusinessType =
   | "email"
   | "phone"
   | "color"
-  | "cron";
+  | "cron"
+  | "qrcode";
 
 export interface SelectOption {
   label: string;
@@ -41,6 +42,8 @@ export interface FieldConfig {
   options?: SelectOption[];
   // 默认值：仅 date / datetime 生效。空 = 无默认；"now" = 当前时间；其它 = 固定时间字面量。
   default?: string;
+  // 命中筛选值时的单元格染色,key=筛选值,value=任意 CSS 颜色。
+  color_rules?: Record<string, string>;
 }
 
 export interface TableConfig {
@@ -130,6 +133,7 @@ export interface RuntimeField {
   placeholder?: string;
   options?: SelectOption[];
   default?: string;
+  color_rules?: Record<string, string>;
 }
 
 export interface RuntimeTable {

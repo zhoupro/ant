@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { toast } from "sonner";
 
 import { Toaster } from "@/components/ui/sonner";
@@ -40,23 +47,22 @@ type View =
   | { kind: "change-password"; user: AuthUser }
   | { kind: "home"; user: AuthUser };
 
-function firstVisibleTab(user: AuthUser): HomeTab {
-  const fallback = (TAB_PERMISSIONS.find((t) => hasPermission(user, t.permission))?.key ??
-    "home") as HomeTab;
-  return fallback;
+function firstVisibleTabPath(user: AuthUser): string {
+  const fallback =
+    TAB_PERMISSIONS.find((t) => hasPermission(user, t.permission))?.key ??
+    "home";
+  return `/${fallback}`;
 }
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
-  const [tab, setTab] = useState<HomeTab>("home");
   const [editingPage, setEditingPage] = useState<Page | null>(null);
-  const [, setActivePageId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const checkAuth = useCallback(async () => {
     try {
       const user = await me();
       setView({ kind: "home", user });
-      setTab(firstVisibleTab(user));
     } catch {
       setView({ kind: "login" });
     }
@@ -73,8 +79,9 @@ export default function App() {
       toast.error("退出登录失败");
     } finally {
       setView({ kind: "login" });
+      navigate("/");
     }
-  }, []);
+  }, [navigate]);
 
   if (view.kind === "loading") {
     return <BootScreen />;
@@ -86,7 +93,7 @@ export default function App() {
           onSubmit={async (input) => {
             const user = await login(input);
             setView({ kind: "home", user });
-            setTab(firstVisibleTab(user));
+            navigate(firstVisibleTabPath(user), { replace: true });
             toast.success(`欢迎回来，${user.username}`);
           }}
         />
@@ -102,7 +109,7 @@ export default function App() {
           onSubmit={async (input) => {
             const user = await changePassword(input);
             setView({ kind: "home", user });
-            setTab(firstVisibleTab(user));
+            navigate(firstVisibleTabPath(user), { replace: true });
             toast.success("密码已更新");
           }}
         />
@@ -111,91 +118,211 @@ export default function App() {
     );
   }
 
-  const canFiles = hasPermission(view.user, "view_files");
-  const canDb = hasPermission(view.user, "view_database");
-  const canModels = hasPermission(view.user, "view_models");
-  const canPages = hasPermission(view.user, "view_pages");
-  const canDashboards = hasPermission(view.user, "view_dashboards");
-  const canApi = hasPermission(view.user, "view_api_tokens");
-const canCron = hasPermission(view.user, "view_cron_jobs");
-  const canSettings = hasPermission(view.user, "view_settings");
-  const canUsers = hasPermission(view.user, "manage_users");
-  const canRoles = hasPermission(view.user, "manage_roles");
+  const user = view.user;
+  const canFiles = hasPermission(user, "view_files");
+  const canDb = hasPermission(user, "view_database");
+  const canModels = hasPermission(user, "view_models");
+  const canPages = hasPermission(user, "view_pages");
+  const canDashboards = hasPermission(user, "view_dashboards");
+  const canApi = hasPermission(user, "view_api_tokens");
+  const canCron = hasPermission(user, "view_cron_jobs");
+  const canSettings = hasPermission(user, "view_settings");
+  const canUsers = hasPermission(user, "manage_users");
+  const canRoles = hasPermission(user, "manage_roles");
 
   return (
-    <>
-      <AppShell
-        user={view.user}
-        active={tab}
-        onTabChange={setTab}
-        onLogout={handleLogout}
-        hideNav={tab === "home"}
-      >
-        {tab === "home" ? (
-          <HomeView onGoToSettings={() => setTab("settings")} />
-        ) : tab === "files" && canFiles ? (
-          <Files />
-        ) : tab === "models" && canModels ? (
-          <ModelsList onGoToDB={() => setTab("db")} />
-        ) : tab === "settings" && canSettings ? (
-          <Settings
-            username={view.user.username}
-            onUsernameChanged={(next) =>
-              setView((prev) =>
-                prev.kind === "home" ? { kind: "home", user: { ...prev.user, username: next } } : prev,
-              )
-            }
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <Navigate
+            to={firstVisibleTabPath(user).slice(1)}
+            replace
           />
-        ) : tab === "pages" && canPages ? (
-          <Card className="w-full max-w-3xl shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">页面配置</CardTitle>
-              <CardDescription>
-                配置底部导航的页面,最多两级,每个页面关联一个逻辑模型或一个统计中心,进入即展示其内容
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <PagesList
-                onOpenPage={(p) => {
-                  setActivePageId(p.id);
-                  setTab("home");
-                }}
-                initialEdit={editingPage}
-                onEditConsumed={() => setEditingPage(null)}
+        }
+      />
+      <Route
+        path="/home"
+        element={
+          <AppShell user={user} onLogout={handleLogout} hideNav>
+            <HomeView onGoToSettings={() => navigate("/settings")} />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/p/:pageId"
+        element={
+          <AppShell user={user} onLogout={handleLogout} hideNav>
+            <PageRoute
+              onGoToSettings={() => navigate("/settings")}
+            />
+          </AppShell>
+        }
+      />
+      <Route
+        path="/files"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canFiles ? <Files /> : <NoPermissionCard tab="files" />}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/db"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canDb ? (
+              <Dashboard onGoToSettings={() => navigate("/settings")} />
+            ) : (
+              <NoPermissionCard tab="db" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/models"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canModels ? (
+              <ModelsList onGoToDB={() => navigate("/db")} />
+            ) : (
+              <NoPermissionCard tab="models" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/dashboards"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canDashboards ? (
+              <Card className="w-full max-w-3xl shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">统计中心</CardTitle>
+                  <CardDescription>
+                    一个统计中心由若干张「卡片」组成,每张卡片执行一条只读 SQL,
+                    可以是数字 / 表格或折线图。配置完成后,把它挂到任意页面下,即在首页渲染。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DashboardsList />
+                </CardContent>
+              </Card>
+            ) : (
+              <NoPermissionCard tab="dashboards" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/pages"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canPages ? (
+              <Card className="w-full max-w-3xl shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">页面配置</CardTitle>
+                  <CardDescription>
+                    配置底部导航的页面,最多两级,每个页面关联一个逻辑模型或一个统计中心,进入即展示其内容
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <PagesList
+                    onOpenPage={(p) => navigate(`/p/${p.id}`)}
+                    initialEdit={editingPage}
+                    onEditConsumed={() => setEditingPage(null)}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <NoPermissionCard tab="pages" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/cron"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canCron ? (
+              <CronJobs user={user} />
+            ) : (
+              <NoPermissionCard tab="cron" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/api"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canApi ? <APITokens /> : <NoPermissionCard tab="api" />}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canSettings ? (
+              <Settings
+                username={user.username}
+                onUsernameChanged={(next) =>
+                  setView((prev) =>
+                    prev.kind === "home"
+                      ? { kind: "home", user: { ...prev.user, username: next } }
+                      : prev,
+                  )
+                }
               />
-            </CardContent>
-          </Card>
-        ) : tab === "dashboards" && canDashboards ? (
-          <Card className="w-full max-w-3xl shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">统计中心</CardTitle>
-              <CardDescription>
-                一个统计中心由若干张「卡片」组成,每张卡片执行一条只读 SQL,
-                可以是数字 / 表格或折线图。配置完成后,把它挂到任意页面下,即在首页渲染。
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DashboardsList />
-            </CardContent>
-          </Card>
-        ) : tab === "api" && canApi ? (
-          <APITokens />
-) : tab === "cron" && canCron ? (
-          <CronJobs user={view.user} />
-        ) : tab === "users" && canUsers ? (
-          <UsersManagement currentUser={view.user} />
-        ) : tab === "roles" && canRoles ? (
-          <RolesManagement />
-        ) : tab === "db" && canDb ? (
-          <Dashboard
-            onGoToSettings={() => setTab("settings")}
-          />
-        ) : (
-          <NoPermissionCard tab={tab} />
-        )}
-      </AppShell>
-      <Toaster position="top-center" richColors />
-    </>
+            ) : (
+              <NoPermissionCard tab="settings" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canUsers ? (
+              <UsersManagement currentUser={user} />
+            ) : (
+              <NoPermissionCard tab="users" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="/roles"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            {canRoles ? (
+              <RolesManagement />
+            ) : (
+              <NoPermissionCard tab="roles" />
+            )}
+          </AppShell>
+        }
+      />
+      <Route
+        path="*"
+        element={
+          <AppShell user={user} onLogout={handleLogout}>
+            <NotFoundCard />
+          </AppShell>
+        }
+      />
+    </Routes>
+  );
+}
+
+// PageRoute 把 URL 中的 :pageId 透传给 HomeView。
+// 单独抽出是为了能用 react-router 的 useParams 钩子。
+function PageRoute({ onGoToSettings }: { onGoToSettings: () => void }) {
+  const { pageId } = useParams<{ pageId: string }>();
+  return (
+    <HomeView onGoToSettings={onGoToSettings} activePageId={pageId} />
   );
 }
 
@@ -208,6 +335,17 @@ function NoPermissionCard({ tab }: { tab: HomeTab }) {
           当前账号没有被授予 {TAB_PERMISSIONS.find((t) => t.key === tab)?.label ?? tab}
           {" "}的权限，请联系管理员。
         </CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
+
+function NotFoundCard() {
+  return (
+    <Card className="w-full max-w-md shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base">页面不存在</CardTitle>
+        <CardDescription>请通过顶部导航选择功能。</CardDescription>
       </CardHeader>
     </Card>
   );

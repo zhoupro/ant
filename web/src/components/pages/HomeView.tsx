@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,26 +15,25 @@ import { cn } from "@/lib/utils";
 
 interface HomeViewProps {
   onGoToSettings: () => void;
+  // 来自 URL /p/:pageId;为 null 时表示「真正的首页」。
+  activePageId?: string;
 }
 
-export function HomeView({ onGoToSettings }: HomeViewProps) {
+export function HomeView({ onGoToSettings, activePageId }: HomeViewProps) {
   const [pages, setPages] = useState<Page[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(activePageId ?? null);
   const [loading, setLoading] = useState(true);
   const [secondaryOpen, setSecondaryOpen] = useState(false);
   const [dashboardDetail, setDashboardDetail] =
     useState<DashboardDetail | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const navigate = useNavigate();
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const list = await listPages();
       setPages(list);
-      setActiveId((prev) => {
-        if (prev && list.some((p) => p.id === prev)) return prev;
-        return list.find((p) => !p.parent_id)?.id ?? null;
-      });
     } catch {
       // 无权限或后端错误时,降级到空列表,不打扰用户。
       setPages([]);
@@ -45,6 +45,19 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // URL 变化时同步 activeId;URL 指向的 pageId 不在列表里时,降级到首个顶级 page。
+  useEffect(() => {
+    if (pages.length === 0) {
+      setActiveId(null);
+      return;
+    }
+    if (activePageId && pages.some((p) => p.id === activePageId)) {
+      setActiveId(activePageId);
+      return;
+    }
+    setActiveId(pages.find((p) => !p.parent_id)?.id ?? null);
+  }, [activePageId, pages]);
 
   const active = pages.find((p) => p.id === activeId) ?? null;
 
@@ -136,7 +149,7 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
             )}
             <div className="rounded-lg border bg-card p-3">
               <h4 className="mb-2 text-xs font-medium text-muted-foreground">已配置页面</h4>
-              <PagesList onOpenPage={(p) => setActiveId(p.id)} />
+                <PagesList onOpenPage={(p) => navigate(`/p/${p.id}`)} />
             </div>
           </div>
         ) : active.model_slug ? (
@@ -145,7 +158,7 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
               slug={active.model_slug}
               onDeleted={async () => {
                 await refresh();
-                setActiveId(null);
+                navigate("/home");
               }}
               hideHeader
             />
@@ -184,7 +197,7 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
             {topLevel.length > 0 ? (
               <div className="rounded-lg border bg-card p-3">
                 <h4 className="mb-2 text-xs font-medium text-muted-foreground">已配置页面</h4>
-                <PagesList onOpenPage={(p) => setActiveId(p.id)} />
+                <PagesList onOpenPage={(p) => navigate(`/p/${p.id}`)} />
               </div>
             ) : null}
           </div>
@@ -200,8 +213,8 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
               : null
           }
           onSelectSub={(sub) => {
-            setActiveId(sub.id);
             setSecondaryOpen(true);
+            navigate(`/p/${sub.id}`);
           }}
         />
       ) : null}
@@ -217,8 +230,8 @@ export function HomeView({ onGoToSettings }: HomeViewProps) {
           if (!p.model_slug && !p.dashboard_id) {
             return;
           }
-          setActiveId(p.id);
           setSecondaryOpen(false);
+          navigate(`/p/${p.id}`);
         }}
         onGoToSettings={onGoToSettings}
       />

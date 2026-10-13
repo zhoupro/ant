@@ -40,6 +40,9 @@ type FieldConfig struct {
 	// Default 仅对 date / datetime 业务类型生效。空 = 无默认；
 	// "now" = 插入时取当前时间；其它字符串视作固定时间字面量。
 	Default string `json:"default,omitempty"`
+	// ColorRules 命中筛选值时的单元格染色,key=筛选值(日期类通常是 "now+30s" 这种),
+	// value=任意 CSS 颜色("#hex" / "rgb(...)" / 命名色)。前端按此高亮单元格。
+	ColorRules map[string]string `json:"color_rules,omitempty"`
 }
 
 type SelectOption struct {
@@ -295,6 +298,7 @@ func BusinessTypes() []string {
 		"countdown",
 		"image", "images", "file", "json", "richtext", "select", "multiselect",
 		"url", "email", "phone", "color", "cron",
+		"qrcode",
 	}
 }
 
@@ -410,6 +414,8 @@ func BusinessTypeLabel(t string) string {
 		return "颜色"
 	case "cron":
 		return "定时调度"
+	case "qrcode":
+		return "二维码"
 	}
 	return t
 }

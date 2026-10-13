@@ -41,6 +41,295 @@ import type {
   SelectOption,
 } from "@/features/logicmodels/types";
 
+const RUNTIME_STORAGE_PREFIX = "mc:runtime:";
+
+// 筛选下拉:单值 "now+Ns",后端 SQL 是 col > now+Ns(命中所有大于此偏移的记录)。
+// 与 ModelEditor 中的颜色规则编辑器的"区间 key"独立:filter 用单值,
+// 颜色规则按"差值落在哪个区间"分档。
+const DATE_FILTER_PRESETS: { value: string; label: string }[] = [
+  { value: "now+30s", label: "大于当前 30 秒" },
+  { value: "now+1m", label: "大于当前 1 分钟" },
+  { value: "now+5m", label: "大于当前 5 分钟" },
+  { value: "now+15m", label: "大于当前 15 分钟" },
+  { value: "now+1h", label: "大于当前 1 小时" },
+  { value: "now+1d", label: "大于当前 1 天" },
+];
+
+// 把 "now+30s" 这种单值解析为相对当前的毫秒数,供染色区间比较用。
+function nowOffsetToMs(spec: string): number | null {
+  const m = /^now\s*([+-])\s*(\d+)\s*([smhd]?)$/i.exec(spec.trim());
+  if (!m) return null;
+  const sign = m[1] === "-" ? -1 : 1;
+  const n = Number(m[2]);
+  const unit = m[3].toLowerCase();
+  const mul =
+    unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : unit === "d" ? 86_400_000 : 1_000;
+  return sign * n * mul;
+}
+
+// formatOffsetMs 把毫秒数格式化为 "30s / 5m / 2h / 1d" 这种最简记法,自选最大单位。
+function formatOffsetMs(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
+  if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h`;
+  return `${Math.round(ms / 86_400_000)}d`;
+}
+
+// 染色区间 key "now+30s~now+1m" / "now+1d~" 解析为 (lower, upper) 毫秒数对。
+// upper 缺失表示开放上限(diff > lower)。解析失败返回 null,跳过该规则。
+function colorRuleRange(rangeKey: string): { lo: number; hi: number | null } | null {
+  const idx = rangeKey.indexOf("~");
+  if (idx < 0) return null;
+  const lo = nowOffsetToMs(rangeKey.slice(0, idx).trim());
+  if (lo === null) return null;
+  const hiPart = rangeKey.slice(idx + 1).trim();
+  if (hiPart === "") return { lo, hi: null };
+  const hi = nowOffsetToMs(hiPart);
+  if (hi === null) return null;
+  return { lo, hi };
+}
+
+// 在 color_rules 中查找差值落到的区间,返回对应颜色。
+// 规则按 lo 升序遍历,首个命中即返回。
+// 颜色规则的 lower / upper 都带 + 号(例如 "now+30s~now+1m")表示"未来某段时间",
+// 因此用**带符号的** diffMs 匹配:已过期(负差)不会被强匹配成"很大"而命中。
+// 不在任何区间内时返回 undefined,即不染色。
+function matchColorRule(
+  diffMs: number,
+  rules: Record<string, string> | undefined,
+): string | undefined {
+  if (!rules) return undefined;
+  const parsed: { lo: number; hi: number | null; color: string }[] = [];
+  for (const [key, color] of Object.entries(rules)) {
+    const r = colorRuleRange(key);
+    if (r) parsed.push({ ...r, color });
+  }
+  parsed.sort((a, b) => a.lo - b.lo);
+  for (const r of parsed) {
+    if (diffMs > r.lo && (r.hi === null || diffMs <= r.hi)) return r.color;
+  }
+  return undefined;
+}
+
+// 反向查找:给定筛选单值 "now+30s",找 color_rules 中以它为下界的那一档。
+// 用于在 select 选项前加 ● 标识,告诉用户"选这一档有颜色规则"。
+function findColorForFilter(
+  filterValue: string,
+  rules: Record<string, string> | undefined,
+): string | undefined {
+  if (!rules) return undefined;
+  for (const [key, color] of Object.entries(rules)) {
+    const idx = key.indexOf("~");
+    const lower = (idx < 0 ? key : key.slice(0, idx)).trim();
+    if (lower === filterValue) return color;
+  }
+  return undefined;
+}
+
+function runtimeStorageKey(slug: string, suffix: string): string {
+  // slug 可能含特殊字符,做一次转义避免破坏 localStorage key。
+  return `${RUNTIME_STORAGE_PREFIX}${slug.replace(/[^A-Za-z0-9_-]/g, "_")}:${suffix}`;
+}
+
+function loadSortEntries(slug: string): SortEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(runtimeStorageKey(slug, "sort"));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: SortEntry[] = [];
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof item.field === "string" &&
+        (item.order === "asc" || item.order === "desc")
+      ) {
+        out.push({ field: item.field, order: item.order });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function saveSortEntries(slug: string, entries: SortEntry[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (entries.length === 0) {
+      window.localStorage.removeItem(runtimeStorageKey(slug, "sort"));
+    } else {
+      window.localStorage.setItem(
+        runtimeStorageKey(slug, "sort"),
+        JSON.stringify(entries),
+      );
+    }
+  } catch {
+    // 容量满 / 隐私模式 / 被禁用 —— 静默,不影响界面交互
+  }
+}
+
+function loadFilters(slug: string): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(runtimeStorageKey(slug, "filters"));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "string") out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function saveFilters(slug: string, filters: Record<string, string>): void {
+  if (typeof window === "undefined") return;
+  // 只持久化有非空值的列,空 map 主动 removeItem 避免 key 残留。
+  const cleaned: Record<string, string> = {};
+  for (const [k, v] of Object.entries(filters)) {
+    if (typeof v === "string" && v !== "") cleaned[k] = v;
+  }
+  try {
+    if (Object.keys(cleaned).length === 0) {
+      window.localStorage.removeItem(runtimeStorageKey(slug, "filters"));
+    } else {
+      window.localStorage.setItem(
+        runtimeStorageKey(slug, "filters"),
+        JSON.stringify(cleaned),
+      );
+    }
+  } catch {
+    // 静默
+  }
+}
+
+function loadOffset(slug: string, fallback: number): number {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(runtimeStorageKey(slug, "offset"));
+    if (raw === null) return fallback;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveOffset(slug: string, offset: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (offset === 0) {
+      window.localStorage.removeItem(runtimeStorageKey(slug, "offset"));
+    } else {
+      window.localStorage.setItem(
+        runtimeStorageKey(slug, "offset"),
+        String(offset),
+      );
+    }
+  } catch {
+    // 静默
+  }
+}
+
+function loadLimit(slug: string, fallback: number): number {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(runtimeStorageKey(slug, "limit"));
+    if (raw === null) return fallback;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveLimit(slug: string, limit: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (limit === PAGE_SIZE_DEFAULT) {
+      // 还原默认值时清掉残留,方便后续默认值变更时迁移。
+      window.localStorage.removeItem(runtimeStorageKey(slug, "limit"));
+    } else {
+      window.localStorage.setItem(
+        runtimeStorageKey(slug, "limit"),
+        String(limit),
+      );
+    }
+  } catch {
+    // 静默
+  }
+}
+
+function loadAutoRefreshEnabled(slug: string, fallback: boolean): boolean {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(
+      runtimeStorageKey(slug, "auto-enabled"),
+    );
+    if (raw === null) return fallback;
+    return raw === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+function saveAutoRefreshEnabled(slug: string, enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (!enabled) {
+      // 关闭态用 removeItem 占位,避免 key 残留太多。
+      window.localStorage.removeItem(runtimeStorageKey(slug, "auto-enabled"));
+    } else {
+      window.localStorage.setItem(
+        runtimeStorageKey(slug, "auto-enabled"),
+        "true",
+      );
+    }
+  } catch {
+    // 静默
+  }
+}
+
+function loadAutoRefreshSeconds(slug: string, fallback: number): number {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(
+      runtimeStorageKey(slug, "auto-seconds"),
+    );
+    if (raw === null) return fallback;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveAutoRefreshSeconds(slug: string, seconds: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (seconds === 30) {
+      // 默认值清理:同 limit 的策略
+      window.localStorage.removeItem(runtimeStorageKey(slug, "auto-seconds"));
+    } else {
+      window.localStorage.setItem(
+        runtimeStorageKey(slug, "auto-seconds"),
+        String(seconds),
+      );
+    }
+  } catch {
+    // 静默
+  }
+}
+
 interface ModelRuntimeProps {
   slug: string;
   onBack?: () => void;
@@ -75,12 +364,28 @@ export function ModelRuntime({
     offset: number;
     fields: RuntimeField[];
   } | null>(null);
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  // 颜色规则诊断:rows 拉取后统计各字段的差值范围与匹配率,
+  // 表格下方渲染,告诉用户「配置区间 vs 实际差值」是否对得上。
+  const [colorRulesStats, setColorRulesStats] = useState<{
+    field: string;
+    total: number;
+    matched: number;
+    minDiffMs: number;
+    maxDiffMs: number;
+  }[]>([]);
+  const [filters, setFilters] = useState<Record<string, string>>(() =>
+    loadFilters(slug),
+  );
   // 多字段排序:每条 {field, order};按列表先后顺序拼接 ORDER BY。
   // 点击列头的循环:未排 -> 加 desc -> 切 asc -> 移除(回到无序)。
-  const [sortEntries, setSortEntries] = useState<SortEntry[]>([]);
-  const [offset, setOffset] = useState(0);
-  const [limit, setLimit] = useState<number>(PAGE_SIZE_DEFAULT);
+  // 持久化到 localStorage,按 slug 分组,刷新后保留用户选择的排序。
+  const [sortEntries, setSortEntries] = useState<SortEntry[]>(() =>
+    loadSortEntries(slug),
+  );
+  const [offset, setOffset] = useState<number>(() => loadOffset(slug, 0));
+  const [limit, setLimit] = useState<number>(() =>
+    loadLimit(slug, PAGE_SIZE_DEFAULT),
+  );
   const [loading, setLoading] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
   const [detail, setDetail] = useState<{ pk: string; row: Record<string, unknown> } | null>(null);
@@ -91,8 +396,14 @@ export function ModelRuntime({
   const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState<{ pk: string; row: Record<string, unknown> } | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState(30);
+  // 二维码弹窗打开期间冻结自动刷新,避免 setRows 重新渲染导致弹窗被关掉。
+  const [qrcodeModalOpen, setQrcodeModalOpen] = useState(false);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(() =>
+    loadAutoRefreshEnabled(slug, false),
+  );
+  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState<number>(() =>
+    loadAutoRefreshSeconds(slug, 30),
+  );
   const [autoRefreshInput, setAutoRefreshInput] = useState("30");
   const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(0);
   const autoRefreshTickRef = useRef<number | null>(null);
@@ -130,6 +441,44 @@ export function ModelRuntime({
         offset: r.offset,
         fields: r.fields,
       });
+      // rows 拉取后,扫一遍配了 color_rules 的字段,统计差值范围与匹配率。
+      // 用户常误配区间(如数据差 7 小时但配 30s~5m),这里直接给数字提示。
+      const stats: {
+        field: string;
+        total: number;
+        matched: number;
+        minDiffMs: number;
+        maxDiffMs: number;
+      }[] = [];
+      for (const f of r.fields) {
+        if (!f.color_rules || Object.keys(f.color_rules).length === 0) continue;
+        let total = 0;
+        let matched = 0;
+        // 范围用带符号差(过去为负、未来为正),用户配的 color_rules 是"未来 N 秒"语义,
+        // 范围信息能看出实际数据多在「过去」还是「未来」。
+        let minDiff = Infinity;
+        let maxDiff = -Infinity;
+        const now = Date.now();
+        for (const row of r.rows) {
+          const target = parseDateLike(row[f.physical]);
+          if (target === null) continue;
+          total++;
+          const diff = target - now;
+          if (diff < minDiff) minDiff = diff;
+          if (diff > maxDiff) maxDiff = diff;
+          if (matchColorRule(diff, f.color_rules)) matched++;
+        }
+        if (total > 0) {
+          stats.push({
+            field: f.physical,
+            total,
+            matched,
+            minDiffMs: minDiff,
+            maxDiffMs: maxDiff,
+          });
+        }
+      }
+      setColorRulesStats(stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载数据失败");
     } finally {
@@ -145,8 +494,62 @@ export function ModelRuntime({
     void refreshRows();
   }, [refreshRows]);
 
+  // 排序状态持久化:slug 切换时重读,sortEntries 变化时写回。
   useEffect(() => {
-    if (!autoRefreshEnabled || !schema || autoRefreshSeconds <= 0) {
+    setSortEntries(loadSortEntries(slug));
+  }, [slug]);
+
+  useEffect(() => {
+    saveSortEntries(slug, sortEntries);
+  }, [slug, sortEntries]);
+
+  // filters / offset / limit 同样按 slug 持久化。
+  useEffect(() => {
+    setFilters(loadFilters(slug));
+  }, [slug]);
+
+  useEffect(() => {
+    saveFilters(slug, filters);
+  }, [slug, filters]);
+
+  useEffect(() => {
+    setOffset(loadOffset(slug, 0));
+  }, [slug]);
+
+  useEffect(() => {
+    saveOffset(slug, offset);
+  }, [slug, offset]);
+
+  useEffect(() => {
+    setLimit(loadLimit(slug, PAGE_SIZE_DEFAULT));
+  }, [slug]);
+
+  useEffect(() => {
+    saveLimit(slug, limit);
+  }, [slug, limit]);
+
+  // 自动刷新配置按 slug 持久化(enabled / seconds),input 跟随 seconds。
+  useEffect(() => {
+    setAutoRefreshEnabled(loadAutoRefreshEnabled(slug, false));
+    setAutoRefreshSeconds(loadAutoRefreshSeconds(slug, 30));
+    setAutoRefreshInput(String(loadAutoRefreshSeconds(slug, 30)));
+  }, [slug]);
+
+  useEffect(() => {
+    saveAutoRefreshEnabled(slug, autoRefreshEnabled);
+  }, [slug, autoRefreshEnabled]);
+
+  useEffect(() => {
+    saveAutoRefreshSeconds(slug, autoRefreshSeconds);
+  }, [slug, autoRefreshSeconds]);
+
+  useEffect(() => {
+    if (
+      !autoRefreshEnabled ||
+      !schema ||
+      autoRefreshSeconds <= 0 ||
+      qrcodeModalOpen
+    ) {
       if (autoRefreshTickRef.current !== null) {
         window.clearInterval(autoRefreshTickRef.current);
         autoRefreshTickRef.current = null;
@@ -170,7 +573,7 @@ export function ModelRuntime({
         autoRefreshTickRef.current = null;
       }
     };
-  }, [autoRefreshEnabled, autoRefreshSeconds, schema, refreshRows]);
+  }, [autoRefreshEnabled, autoRefreshSeconds, schema, refreshRows, qrcodeModalOpen]);
 
   const openDetail = async (pk: string) => {
     setDetail({ pk, row: {} });
@@ -505,10 +908,10 @@ export function ModelRuntime({
                   ) : f.business_type === "date" ||
                     f.business_type === "datetime" ||
                     f.business_type === "countdown" ? (
-                    <select
+                    <DateFilterSelect
                       value={filters[f.physical] ?? ""}
-                      onChange={(e) => {
-                        const v = e.target.value;
+                      colorRules={f.color_rules}
+                      onChange={(v) => {
                         setFilters((prev) => {
                           const next = { ...prev };
                           if (v) next[f.physical] = v;
@@ -517,16 +920,7 @@ export function ModelRuntime({
                         });
                         setOffset(0);
                       }}
-                      className="h-6 w-full rounded border bg-background px-1 text-[10px]"
-                    >
-                      <option value="">全部</option>
-                      <option value="now+30s">大于当前 30 秒</option>
-                      <option value="now+1m">大于当前 1 分钟</option>
-                      <option value="now+5m">大于当前 5 分钟</option>
-                      <option value="now+15m">大于当前 15 分钟</option>
-                      <option value="now+1h">大于当前 1 小时</option>
-                      <option value="now+1d">大于当前 1 天</option>
-                    </select>
+                    />
                   ) : (
                     <Input
                       type={
@@ -569,32 +963,53 @@ export function ModelRuntime({
               <tr>
                 <td
                   colSpan={visibleFields.length + (readOnly ? 0 : 1)}
-                  className="px-3 py-8 text-center text-xs text-muted-foreground"
+                  className="px-3 py-10 text-center text-xs text-muted-foreground"
                 >
-                  没有数据
+                  <div className="flex flex-col items-center gap-1">
+                    <span>没有数据</span>
+                    {Object.keys(filters).length > 0 || sortEntries.length > 0 ? (
+                      <span className="text-[10px]">
+                        当前筛选 / 排序条件下无匹配记录,可点击「清空筛选」重置
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ) : (
               rows.items.map((r, idx) => {
                 const pk = String(r[pkName] ?? r.__pk ?? "");
+                // 本轮渲染基准时间,用于按差值匹配颜色规则。
+                // 颜色随 refreshRows 重新计算,不必逐秒更新,避免每帧重渲表格。
+                const nowMs = Date.now();
                 return (
                   <tr
                     key={idx}
                     className="cursor-pointer odd:bg-muted/20 hover:bg-muted/40"
                     onClick={() => void openDetail(pk)}
                   >
-                    {visibleFields.map((f) => (
+                    {visibleFields.map((f) => {
+                      // 按行实际差值匹配 color_rules 区间,与筛选解耦:
+                      // 筛选只看 "> now+Ns",染色按"差值落在哪一档"决定颜色。
+                      const target = parseDateLike(r[f.physical]);
+                      const cellColor =
+                        target !== null && f.color_rules
+                          ? matchColorRule(target - nowMs, f.color_rules)
+                          : undefined;
+                      return (
                       <td
                         key={f.key}
                         className="max-w-[260px] truncate border-b px-3 py-1.5 align-top text-xs"
+                        style={cellColor ? { backgroundColor: cellColor } : undefined}
                       >
                         <CellValue
                           value={r[f.physical]}
                           field={f}
                           onPreviewImage={setPreviewImage}
+                          onQrcodeOpenChange={setQrcodeModalOpen}
                         />
                       </td>
-                    ))}
+                      );
+                    })}
                     <td className="border-b px-3 py-1.5 text-right">
                       {readOnly ? null : (
                         <div className="inline-flex gap-1">
@@ -632,10 +1047,30 @@ export function ModelRuntime({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <div>
-          {total === 0
-            ? "共 0 行"
-            : `${pageStart} - ${pageEnd} / 共 ${total} 行`}
+        <div className="space-y-0.5">
+          <div>
+            {total === 0
+              ? "共 0 行"
+              : `${pageStart} - ${pageEnd} / 共 ${total} 行`}
+          </div>
+          {colorRulesStats.length > 0 ? (
+            <div className="text-[10px]">
+              {colorRulesStats.map((s) => {
+                const lo = formatOffsetMs(s.minDiffMs);
+                const hi = formatOffsetMs(s.maxDiffMs);
+                return (
+                  <div key={s.field}>
+                    颜色规则 <code className="font-mono">{s.field}</code>:
+                    实际差值 <code className="font-mono">{lo} ~ {hi}</code>,
+                    匹配 {s.matched}/{s.total} 行
+                    {s.matched === 0
+                      ? " —— 请检查 color_rules 区间是否覆盖实际差值"
+                      : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
         <div className="inline-flex items-center gap-1">
           <select
@@ -740,9 +1175,15 @@ interface CellValueProps {
   value: unknown;
   field: RuntimeField;
   onPreviewImage?: (src: string) => void;
+  onQrcodeOpenChange?: (open: boolean) => void;
 }
 
-function CellValue({ value, field, onPreviewImage }: CellValueProps) {
+function CellValue({
+  value,
+  field,
+  onPreviewImage,
+  onQrcodeOpenChange,
+}: CellValueProps) {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground">—</span>;
   }
@@ -809,6 +1250,8 @@ function CellValue({ value, field, onPreviewImage }: CellValueProps) {
       return <span>{formatDateForDisplay(value)}</span>;
     case "countdown":
       return <CountdownCell target={parseDateLike(value)} />;
+    case "qrcode":
+      return <QrcodeCell value={value} onOpenChange={onQrcodeOpenChange} />;
     default:
       return <span>{summarize(value)}</span>;
   }
@@ -899,6 +1342,192 @@ function CountdownCell({ target }: CountdownCellProps) {
     return <span className="text-muted-foreground">—</span>;
   }
   return <span className="font-mono text-[11px]">{formatCountdown(target - now)}</span>;
+}
+
+interface DateFilterSelectProps {
+  value: string;
+  colorRules: Record<string, string> | undefined;
+  onChange: (value: string) => void;
+}
+
+// 自绘下拉:原生 <option> 不支持自定义颜色,改用 popover + 真实色块。
+// 当前选中的值对应 color_rules 区间时,在按钮右侧加一个色块,直观看到颜色。
+function DateFilterSelect({
+  value,
+  colorRules,
+  onChange,
+}: DateFilterSelectProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+  const current = DATE_FILTER_PRESETS.find((p) => p.value === value);
+  const currentColor = current
+    ? findColorForFilter(current.value, colorRules)
+    : undefined;
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-6 w-full items-center gap-1 rounded border bg-background px-1 text-[10px]"
+      >
+        {currentColor ? (
+          <span
+            aria-hidden
+            className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border"
+            style={{ backgroundColor: currentColor }}
+          />
+        ) : null}
+        <span className="flex-1 truncate text-left">
+          {current ? current.label : "全部"}
+        </span>
+        <span aria-hidden className="text-muted-foreground">▾</span>
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border bg-card p-1 text-[11px] shadow-md"
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={value === ""}
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-muted"
+          >
+            <span className="inline-block h-2.5 w-2.5 shrink-0" />
+            <span>全部</span>
+          </button>
+          {DATE_FILTER_PRESETS.map((p) => {
+            const c = findColorForFilter(p.value, colorRules);
+            return (
+              <button
+                key={p.value}
+                type="button"
+                role="option"
+                aria-selected={value === p.value}
+                onClick={() => {
+                  onChange(p.value);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-muted"
+              >
+                {c ? (
+                  <span
+                    aria-hidden
+                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border"
+                    style={{ backgroundColor: c }}
+                  />
+                ) : (
+                  <span className="inline-block h-2.5 w-2.5 shrink-0" />
+                )}
+                <span>{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface QrcodeCellProps {
+  value: unknown;
+  // 弹窗打开/关闭时通知父组件,父组件可借此暂停自动刷新等副作用。
+  onOpenChange?: (open: boolean) => void;
+}
+
+// QrcodeCell 把字符串渲染成二维码 SVG,字符串为空时显示占位符;
+// 默认走纯 SVG 路径,避免对 canvas/node-canvas 的依赖。
+function QrcodeCell({ value, onOpenChange }: QrcodeCellProps) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const text = value === null || value === undefined ? "" : String(value).trim();
+
+  // 弹窗状态变化时同步给父组件,父组件据此暂停自动刷新,
+  // 避免 setRows 重新渲染导致弹窗被卸载、扫描中突然关闭。
+  useEffect(() => {
+    onOpenChange?.(open);
+    if (!open) return;
+    return () => onOpenChange?.(false);
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!text) {
+      setSvg(null);
+      return;
+    }
+    import("qrcode").then((mod) => {
+      const QR = mod.default ?? mod;
+      QR.toString(text, { type: "svg", margin: 0, errorCorrectionLevel: "M" })
+        .then((s) => {
+          if (!cancelled) setSvg(s);
+        })
+        .catch(() => {
+          if (!cancelled) setSvg(null);
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [text]);
+
+  if (!text) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  if (!svg) {
+    return <span className="font-mono text-[10px] text-muted-foreground">{summarize(text)}</span>;
+  }
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="block"
+        title="点击查看二维码"
+      >
+        <span
+          aria-hidden
+          className="block h-10 w-10 [&_svg]:h-full [&_svg]:w-full"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      </button>
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="rounded-lg bg-background p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="max-w-[80vw] [&_svg]:h-auto [&_svg]:max-h-[70vh] [&_svg]:w-[min(70vh,80vw)]">
+              <span aria-hidden dangerouslySetInnerHTML={{ __html: svg }} />
+            </div>
+            <p className="mt-3 break-all text-center text-[10px] text-muted-foreground">
+              {text}
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 function summarize(v: unknown): string {
@@ -1659,6 +2288,18 @@ function FieldInput({
         <div className="space-y-1 sm:col-span-2">
           {common}
           <CronPicker value={value} onChange={onChange} />
+        </div>
+      );
+    case "qrcode":
+      return (
+        <div className="space-y-1 sm:col-span-2">
+          {common}
+          <Input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={field.placeholder ?? "可填网址、文本等任意内容,保存后会以二维码形式展示"}
+            className="h-8"
+          />
         </div>
       );
     default:
