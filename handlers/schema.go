@@ -27,12 +27,12 @@ func readPhysicalSchema(gdb *gorm.DB, table string) (physicalTable, error) {
 	var out physicalTable
 	out.Name = table
 	type pragmaRow struct {
-		CID       int    `gorm:"column:cid"`
-		Name      string `gorm:"column:name"`
-		Type      string `gorm:"column:type"`
-		NotNull   int    `gorm:"column:notnull"`
-		DfltValue any    `gorm:"column:dflt_value"`
-		PK        int    `gorm:"column:pk"`
+		CID       int     `gorm:"column:cid"`
+		Name      string  `gorm:"column:name"`
+		Type      string  `gorm:"column:type"`
+		NotNull   int     `gorm:"column:notnull"`
+		DfltValue *string `gorm:"column:dflt_value"`
+		PK        int     `gorm:"column:pk"`
 	}
 	var rows []pragmaRow
 	q := fmt.Sprintf("PRAGMA table_info(%q)", table)

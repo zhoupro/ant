@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"mc/datadb"
 	"net/http"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -128,12 +127,12 @@ func (h *TablesHandler) schema(c *gin.Context) {
 
 func readSchema(gdb *gorm.DB, table string) ([]Column, []string, error) {
 	type pragmaRow struct {
-		CID       int    `gorm:"column:cid"`
-		Name      string `gorm:"column:name"`
-		Type      string `gorm:"column:type"`
-		NotNull   int    `gorm:"column:notnull"`
-		DfltValue any    `gorm:"column:dflt_value"`
-		PK        int    `gorm:"column:pk"`
+		CID       int     `gorm:"column:cid"`
+		Name      string  `gorm:"column:name"`
+		Type      string  `gorm:"column:type"`
+		NotNull   int     `gorm:"column:notnull"`
+		DfltValue *string `gorm:"column:dflt_value"`
+		PK        int     `gorm:"column:pk"`
 	}
 	var rows []pragmaRow
 	q := fmt.Sprintf("PRAGMA table_info(%q)", table)
@@ -160,32 +159,11 @@ func readSchema(gdb *gorm.DB, table string) ([]Column, []string, error) {
 	return cols, pks, nil
 }
 
-func stringifyDefault(v any) string {
+func stringifyDefault(v *string) string {
 	if v == nil {
 		return ""
 	}
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func:
-		if rv.IsNil() {
-			return ""
-		}
-		if rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
-			return stringifyDefault(rv.Elem().Interface())
-		}
-	}
-	switch x := v.(type) {
-	case string:
-		return x
-	case []byte:
-		s := string(x)
-		if strings.HasPrefix(s, "0x") && len(s) > 12 {
-			return ""
-		}
-		return s
-	default:
-		return ""
-	}
+	return *v
 }
 
 func (h *TablesHandler) rows(c *gin.Context) {

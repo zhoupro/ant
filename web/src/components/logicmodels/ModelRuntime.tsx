@@ -1191,8 +1191,18 @@ function RowFormDialog({
 }: RowFormDialogProps) {
   const rootTable = schema.tables.find((t) => t.alias === schema.root_alias);
   const fields = useMemo<RuntimeField[]>(
-    () => rootTable?.fields ?? [],
-    [rootTable],
+    () => {
+      const all = rootTable?.fields ?? [];
+      // 新增时主键由数据库自增,不需要也不允许用户填写;编辑时主键也不可改。
+      if (mode === "insert" || mode === "update") {
+        const pk = rootTable?.primary_key;
+        if (pk) {
+          return all.filter((f) => f.physical !== pk);
+        }
+      }
+      return all;
+    },
+    [rootTable, mode],
   );
   const [values, setValues] = useState<Record<string, string>>({});
   const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});

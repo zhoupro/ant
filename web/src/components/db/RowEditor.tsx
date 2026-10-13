@@ -149,7 +149,7 @@ export function RowEditor({
 }
 
 function isAutoIncrement(c: Column): boolean {
-  return /\bINTEGER\s+PRIMARY\s+KEY\b/i.test(`${c.type} ${c.name}`) && c.pk
+  return c.pk && /^integer$/i.test(c.type);
 }
 
 function coerce(raw: string, c: Column): unknown {
